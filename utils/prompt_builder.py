@@ -10,12 +10,14 @@ def build_testcase_prompt(
     existing_test_cases_json: Optional[str] = None,
     project: Optional[str] = None,
     component: Optional[str] = None,
+    target_count: Optional[int] = None,
 ) -> str:
     """
     Build a strict instruction prompt for the LLM.
 
     Does not decide coverage strategy; only formats the given
     coverage_focus and optional existing-test-cases block into the prompt.
+    If target_count is set, the prompt asks for approximately that many test cases in this batch.
     """
 
     context_lines = []
@@ -41,6 +43,10 @@ Existing test cases:
 Expand the existing test suite to increase coverage. Do not replace existing tests. Only add new ones.
 """
 
+    target_count_line = ""
+    if target_count is not None and target_count > 0:
+        target_count_line = f"\nGenerate approximately {target_count} distinct test cases for this batch.\n"
+
     prompt = f"""
 You are a senior QA test architect designing a new test suite from scratch.
 Focus on identifying the most important risks first.
@@ -49,6 +55,7 @@ Your task is to generate high-quality, structured software test cases based on t
 {existing_block}
 
 Coverage focus for this batch: {coverage_focus}
+{target_count_line}
 
 Follow these rules strictly:
 - Return ONLY valid JSON.

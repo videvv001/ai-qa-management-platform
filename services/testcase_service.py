@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 from uuid import UUID
 
 from providers.base import LLMProvider
@@ -47,6 +47,15 @@ COVERAGE_LEVEL_LAYERS: Dict[str, tuple[str, ...]] = {
     "medium": ("core", "validation"),
     "high": ("core", "validation", "edge"),
     "comprehensive": ("core", "validation", "edge", "destructive"),
+}
+
+# Target number of test cases to request per layer, so total scales with coverage.
+# Without this, the LLM often returns ~5 per layer (e.g. 4 layers × 5 ≈ 20 for comprehensive).
+TARGET_PER_LAYER: Dict[str, int] = {
+    "low": 5,
+    "medium": 6,
+    "high": 8,
+    "comprehensive": 12,
 }
 
 
@@ -130,10 +139,12 @@ class TestCaseService:
         user_instructions: str,
         layer: str,
         existing_cases: List[TestCase],
+        target_count: Optional[int] = None,
     ) -> List[TestCase]:
         """
         Generate one layer of test cases. Sequentially called by the pipeline.
         When existing_cases is non-empty, the prompt instructs the model not to duplicate.
+        target_count asks the LLM for approximately that many cases in this batch.
         """
         focus = LAYER_FOCUS.get(layer, LAYER_FOCUS["core"])
         existing_json = self._existing_cases_to_json(existing_cases) if existing_cases else ""
@@ -142,6 +153,7 @@ class TestCaseService:
             user_instructions=user_instructions,
             coverage_focus=focus,
             existing_test_cases_json=existing_json if existing_json else None,
+            target_count=target_count,
         )
 
         raw_output = await provider.generate_test_cases(prompt)
@@ -170,14 +182,32 @@ class TestCaseService:
         return validated
 
     @staticmethod
+    def _sanitize_unicode(s: str) -> str:
+        """Remove invalid surrogate characters (U+D800–U+DFFF) that cause Pydantic string_unicode errors."""
+        if not isinstance(s, str):
+            return str(s)
+        return re.sub(r"[\ud800-\udfff]", "", s)
+
+    @staticmethod
     def _clean_test_case_data(test_case_data: dict) -> dict:
         """
         Ensure required fields are present and not empty.
+        Sanitize invalid Unicode surrogates from LLM output.
 
         Some LLMs omit or return empty values for certain fields despite
         instructions. This method provides sensible defaults to prevent
         Pydantic validation errors.
         """
+        def _san(s: str) -> str:
+            return TestCaseService._sanitize_unicode(s) if isinstance(s, str) else str(s)
+
+        for key in ("test_scenario", "test_description", "pre_condition", "test_data", "expected_result"):
+            if test_case_data.get(key) is not None:
+                test_case_data[key] = _san(str(test_case_data[key]))
+        steps = test_case_data.get("test_steps")
+        if isinstance(steps, list):
+            test_case_data["test_steps"] = [_san(str(s)) for s in steps]
+
         if not (test_case_data.get("test_scenario") or "").strip():
             test_case_data["test_scenario"] = "Test scenario as described"
         if not (test_case_data.get("test_description") or "").strip():
@@ -274,6 +304,10 @@ class TestCaseService:
         )
 
         accumulated: List[TestCase] = []
+        target_per_layer = TARGET_PER_LAYER.get(
+            payload.coverage_level,
+            TARGET_PER_LAYER["medium"],
+        )
 
         for layer in layers:
             batch = await self._generate_layer(
@@ -281,6 +315,7 @@ class TestCaseService:
                 user_instructions=user_instructions,
                 layer=layer,
                 existing_cases=accumulated,
+                target_count=target_per_layer,
             )
             accumulated.extend(batch)
             logger.debug(

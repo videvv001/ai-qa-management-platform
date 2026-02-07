@@ -42,6 +42,7 @@ class OpenAIProvider(LLMProvider):
             model=self._settings.openai_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
+            max_tokens=7000
         )
 
         content = response.choices[0].message.content
