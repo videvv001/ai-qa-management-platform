@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { ChevronDown, ChevronRight, Download } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { TestCaseItem } from "@/api/types";
 import { EXPORT_COLUMNS } from "@/constants/exportColumns";
@@ -7,6 +7,7 @@ import { EXPORT_COLUMNS } from "@/constants/exportColumns";
 interface ResultsTableProps {
   items: TestCaseItem[];
   onExportCsv: () => void;
+  onDeleteTestCase?: (testCaseId: string) => void | Promise<void>;
   className?: string;
 }
 
@@ -35,7 +36,8 @@ function itemToExportRow(tc: TestCaseItem): string[] {
   ];
 }
 
-function exportToCsv(items: TestCaseItem[]): void {
+/** Export items to CSV; optional filename (default "test-cases.csv"). */
+export function exportToCsv(items: TestCaseItem[], filename = "test-cases.csv"): void {
   const escape = (s: string) => {
     const t = String(s ?? "").replace(/"/g, '""');
     return t.includes(",") || t.includes('"') || t.includes("\n") ? `"${t}"` : t;
@@ -47,21 +49,34 @@ function exportToCsv(items: TestCaseItem[]): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "test-cases.csv";
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-export function ResultsTable({ items, onExportCsv, className = "" }: ResultsTableProps) {
+export function ResultsTable({ items, onExportCsv, onDeleteTestCase, className = "" }: ResultsTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const toggle = useCallback((id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
   }, []);
 
   const handleExport = useCallback(() => {
-    exportToCsv(items);
     onExportCsv();
-  }, [items, onExportCsv]);
+  }, [onExportCsv]);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!onDeleteTestCase) return;
+      setDeletingId(id);
+      try {
+        await onDeleteTestCase(id);
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [onDeleteTestCase]
+  );
 
   if (items.length === 0) {
     return (
@@ -90,6 +105,9 @@ export function ResultsTable({ items, onExportCsv, className = "" }: ResultsTabl
           <thead className="sticky top-0 z-10 bg-neutral-50 dark:bg-neutral-800/95 shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05)]">
             <tr className="border-b border-neutral-200 dark:border-neutral-600">
               <th className="w-9 shrink-0 p-2 text-neutral-600 dark:text-neutral-400" aria-label="Expand" />
+              {onDeleteTestCase ? (
+                <th className="w-9 shrink-0 p-2 text-neutral-600 dark:text-neutral-400" aria-label="Delete" />
+              ) : null}
               <th className="min-w-[140px] w-[16%] p-2.5 font-medium text-neutral-700 dark:text-neutral-300">
                 Scenario
               </th>
@@ -127,6 +145,20 @@ export function ResultsTable({ items, onExportCsv, className = "" }: ResultsTabl
                         )}
                       </button>
                     </td>
+                    {onDeleteTestCase ? (
+                      <td className="p-2 align-top">
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(tc.id)}
+                          disabled={deletingId === tc.id}
+                          className="rounded p-1 text-neutral-500 hover:bg-red-100 hover:text-red-600 dark:text-neutral-400 dark:hover:bg-red-900/40 dark:hover:text-red-400 transition-colors disabled:opacity-50"
+                          title="Delete test case (excluded from CSV export)"
+                          aria-label="Delete test case"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    ) : null}
                     <td className="p-2.5 align-top font-medium text-neutral-900 dark:text-neutral-100">
                       <span className="block whitespace-normal break-words">{tc.test_scenario}</span>
                     </td>
@@ -146,6 +178,7 @@ export function ResultsTable({ items, onExportCsv, className = "" }: ResultsTabl
                   {isExpanded && (
                     <tr className="border-b border-neutral-100 bg-neutral-50/40 dark:border-neutral-700/50 dark:bg-neutral-800/30">
                       <td className="p-2" />
+                      {onDeleteTestCase ? <td className="p-2" /> : null}
                       <td colSpan={5} className="p-4">
                         <div className="grid gap-4 text-[13px] sm:grid-cols-2">
                           <div>

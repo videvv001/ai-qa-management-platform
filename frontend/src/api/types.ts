@@ -17,6 +17,8 @@ export interface GenerateTestCasesRequest {
   coverage_level: CoverageLevel;
   /** Backend uses this to choose Ollama vs OpenAI. */
   provider?: ApiProvider;
+  /** Backend uses this to choose gpt-4o-mini (fast) vs gpt-4o (smart) when provider is OpenAI. */
+  model_profile?: ModelProfile;
 }
 
 export interface TestCaseItem {
@@ -34,4 +36,41 @@ export interface TestCaseItem {
 export interface TestCaseListResponse {
   items: TestCaseItem[];
   total: number;
+}
+
+// --- Batch ---
+
+export type FeatureResultStatus = "pending" | "generating" | "completed" | "failed";
+
+export interface FeatureConfigPayload {
+  feature_name: string;
+  feature_description: string;
+  allowed_actions?: string;
+  excluded_features?: string;
+  coverage_level: CoverageLevel;
+}
+
+export interface BatchGenerateRequest {
+  provider?: ApiProvider;
+  /** fast = gpt-4o-mini, smart = gpt-4o when provider is OpenAI. */
+  model_profile?: ModelProfile;
+  features: FeatureConfigPayload[];
+}
+
+export interface BatchGenerateResponse {
+  batch_id: string;
+}
+
+export interface BatchFeatureResult {
+  feature_id: string;
+  feature_name: string;
+  status: FeatureResultStatus;
+  items?: TestCaseItem[] | null;
+  error?: string | null;
+}
+
+export interface BatchStatusResponse {
+  batch_id: string;
+  status: "pending" | "running" | "completed" | "partial";
+  features: BatchFeatureResult[];
 }

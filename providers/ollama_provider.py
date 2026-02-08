@@ -36,7 +36,7 @@ class OllamaProvider(LLMProvider):
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def generate_test_cases(self, prompt: str) -> str:
+    async def generate_test_cases(self, prompt: str, **kwargs: object) -> str:
         max_retries = 3
         backoff_base_seconds = 1
 
@@ -46,7 +46,8 @@ class OllamaProvider(LLMProvider):
             "stream": False,
             "format": "json",
             "options": {
-                "temperature": 0.3,
+                "temperature": 0.1,
+                "top_p": 0.9,
                 "num_predict": 16000,
             },
         }

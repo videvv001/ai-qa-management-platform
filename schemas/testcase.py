@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 CoverageLevel = Literal["low", "medium", "high", "comprehensive"]
 VALID_COVERAGE_LEVELS: tuple[str, ...] = ("low", "medium", "high", "comprehensive")
 
+ModelProfile = Literal["fast", "smart", "private"]
+
 
 class TestCaseGenerationRequest(BaseModel):
     project: constr(min_length=1) = Field(
@@ -118,6 +120,14 @@ class GenerateTestCasesRequest(BaseModel):
         default="medium",
         description="Risk-based coverage depth: low, medium, high, or comprehensive.",
     )
+    allowed_actions: Optional[str] = Field(
+        default=None,
+        description="Optional comma/newline-separated allowed actions to include in context.",
+    )
+    excluded_features: Optional[str] = Field(
+        default=None,
+        description="Optional comma/newline-separated excluded features to include in context.",
+    )
     number_of_cases: Optional[conint(ge=1, le=200)] = Field(
         default=None,
         description="(Deprecated) If provided, mapped to coverage_level; prefer coverage_level.",
@@ -125,6 +135,10 @@ class GenerateTestCasesRequest(BaseModel):
     provider: Optional[str] = Field(
         default=None,
         description="LLM provider: 'ollama' or 'openai'. Uses default from config if omitted.",
+    )
+    model_profile: Optional[ModelProfile] = Field(
+        default=None,
+        description="UI profile: 'fast' (gpt-4o-mini), 'smart' (gpt-4o), 'private' (Ollama). Used by OpenAI to pick model.",
     )
 
     @model_validator(mode="before")
@@ -143,3 +157,90 @@ class GenerateTestCasesRequest(BaseModel):
                 extra={"number_of_cases": n, "coverage_level": level},
             )
         return data
+
+
+# --- Batch generation ---
+
+FeatureResultStatus = Literal["pending", "generating", "completed", "failed"]
+
+
+class FeatureConfig(BaseModel):
+    """One feature configuration in a batch request."""
+
+    feature_name: constr(min_length=1) = Field(
+        ...,
+        description="Human-readable name of the feature under test.",
+    )
+    feature_description: constr(min_length=1) = Field(
+        ...,
+        description="Detailed description of the feature and its behavior.",
+    )
+    allowed_actions: Optional[str] = Field(
+        default=None,
+        description="Optional allowed actions (comma/newline separated).",
+    )
+    excluded_features: Optional[str] = Field(
+        default=None,
+        description="Optional excluded features (comma/newline separated).",
+    )
+    coverage_level: CoverageLevel = Field(
+        default="medium",
+        description="Risk-based coverage depth for this feature.",
+    )
+
+
+class BatchGenerateRequest(BaseModel):
+    """Request to start a batch of feature generations."""
+
+    provider: Optional[str] = Field(
+        default=None,
+        description="LLM provider: 'ollama' or 'openai'. Uses default from config if omitted.",
+    )
+    model_profile: Optional[ModelProfile] = Field(
+        default=None,
+        description="UI profile: 'fast' (gpt-4o-mini), 'smart' (gpt-4o), 'private' (Ollama).",
+    )
+    features: List[FeatureConfig] = Field(
+        ...,
+        min_length=1,
+        description="List of feature configurations to generate test cases for.",
+    )
+
+
+class BatchGenerateResponse(BaseModel):
+    """Response after submitting a batch job."""
+
+    batch_id: str = Field(..., description="Unique identifier for the batch.")
+
+
+class BatchFeatureResult(BaseModel):
+    """Status and optional results for one feature in a batch."""
+
+    feature_id: str = Field(..., description="Unique identifier for this feature in the batch.")
+    feature_name: str = Field(..., description="Display name of the feature.")
+    status: FeatureResultStatus = Field(
+        ...,
+        description="pending | generating | completed | failed.",
+    )
+    items: Optional[List[TestCaseResponse]] = Field(
+        default=None,
+        description="Generated test cases when status is completed.",
+    )
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message when status is failed.",
+    )
+
+
+class BatchStatusResponse(BaseModel):
+    """Current status and results of a batch job."""
+
+    batch_id: str = Field(..., description="Batch identifier.")
+    status: Literal["pending", "running", "completed", "partial"] = Field(
+        ...,
+        description="pending=not started, running=at least one generating, completed=all done success, partial=at least one failed.",
+    )
+    features: List[BatchFeatureResult] = Field(
+        ...,
+        description="Per-feature status and results.",
+    )

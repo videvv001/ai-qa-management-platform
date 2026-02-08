@@ -1,15 +1,27 @@
-import { useState, useCallback, useEffect } from "react";
-import { Sun, Moon, PanelLeftClose, PanelLeft, Maximize2, Minimize2 } from "lucide-react";
-import { GenerationForm, type GenerationFormValues } from "@/components/GenerationForm";
-import { ResultsTable } from "@/components/ResultsTable";
+import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  Sun,
+  Moon,
+  PanelLeftClose,
+  PanelLeft,
+  Maximize2,
+  Minimize2,
+} from "lucide-react";
+import { GenerationForm, type BatchFormValues, type SingleFeatureValues } from "@/components/GenerationForm";
 import { ResultsTableSkeleton } from "@/components/ResultsTableSkeleton";
+import { BatchResultsView } from "@/components/BatchResultsView";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { generateTestCases } from "@/api/client";
-import type { ApiProvider, ModelProfile, TestCaseItem } from "@/api/types";
+import { batchGenerate, getBatchStatus, retryBatchFeature } from "@/api/client";
+import type {
+  ApiProvider,
+  BatchStatusResponse,
+  ModelProfile,
+} from "@/api/types";
 
 const THEME_KEY = "ai-tc-gen-theme";
 const PANEL_KEY = "ai-tc-gen-panel-collapsed";
+const POLL_INTERVAL_MS = 1500;
 
 function getStoredTheme(): "light" | "dark" {
   try {
@@ -30,13 +42,13 @@ function modelProfileToProvider(profile: ModelProfile): ApiProvider {
   return profile === "private" ? "ollama" : "openai";
 }
 
-function buildFeatureDescription(values: GenerationFormValues): string {
-  let text = values.featureDescription.trim();
-  const allowed = values.allowedActions
+function buildFeatureDescription(f: SingleFeatureValues): string {
+  let text = f.featureDescription.trim();
+  const allowed = f.allowedActions
     .split(/[\n,]+/)
     .map((s) => s.trim())
     .filter(Boolean);
-  const excluded = values.excludedFeatures
+  const excluded = f.excludedFeatures
     .split(/[\n,]+/)
     .map((s) => s.trim())
     .filter(Boolean);
@@ -50,13 +62,20 @@ function buildFeatureDescription(values: GenerationFormValues): string {
 }
 
 export default function App() {
-  const [items, setItems] = useState<TestCaseItem[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [batch, setBatch] = useState<BatchStatusResponse | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastValues, setLastValues] = useState<GenerationFormValues | null>(null);
+  const [lastValues, setLastValues] = useState<BatchFormValues | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
   const [panelCollapsed, setPanelCollapsed] = useState(getStoredPanelCollapsed);
   const [resultsFullscreen, setResultsFullscreen] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isGenerating =
+    isSubmitting ||
+    (batch !== null &&
+      (batch.status === "pending" || batch.status === "running"));
 
   useEffect(() => {
     const root = document.documentElement;
@@ -73,26 +92,85 @@ export default function App() {
     } catch {}
   }, [panelCollapsed]);
 
-  const runGeneration = useCallback(async (values: GenerationFormValues) => {
+  const runGeneration = useCallback(async (values: BatchFormValues) => {
     setError(null);
     setLastValues(values);
-    setIsGenerating(true);
+    setIsSubmitting(true);
+    setBatch(null);
+    setBatchId(null);
     try {
-      const feature_description = buildFeatureDescription(values);
-      const res = await generateTestCases({
-        feature_name: values.featureName.trim(),
-        feature_description,
-        coverage_level: values.coverageLevel,
-        provider: modelProfileToProvider(values.modelProfile),
+      const provider = modelProfileToProvider(values.modelProfile);
+      const features = values.features.map((f) => ({
+        feature_name: f.featureName.trim(),
+        feature_description: buildFeatureDescription(f),
+        allowed_actions: f.allowedActions.trim() || undefined,
+        excluded_features: f.excludedFeatures.trim() || undefined,
+        coverage_level: f.coverageLevel,
+      }));
+      const res = await batchGenerate({
+        provider,
+        model_profile: values.modelProfile,
+        features,
       });
-      setItems(res.items);
+      setBatchId(res.batch_id);
+      const initial = await getBatchStatus(res.batch_id);
+      setBatch(initial);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Something went wrong. Please try again.";
+      const message =
+        e instanceof Error
+          ? e.message
+          : "Something went wrong. Please try again.";
       setError(message);
     } finally {
-      setIsGenerating(false);
+      setIsSubmitting(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!batchId || !batch) return;
+    if (batch.status !== "pending" && batch.status !== "running") return;
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const next = await getBatchStatus(batchId);
+        setBatch(next);
+        if (next.status !== "pending" && next.status !== "running") {
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        }
+      } catch {
+        // keep polling on transient errors
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [batchId, batch?.status]);
+
+  const handleRetryFeature = useCallback(
+    async (featureId: string) => {
+      if (!batchId || !batch) return;
+      const provider = lastValues
+        ? modelProfileToProvider(lastValues.modelProfile)
+        : undefined;
+      await retryBatchFeature(batchId, featureId, provider);
+      const updated = await getBatchStatus(batchId);
+      setBatch(updated);
+    },
+    [batchId, batch, lastValues]
+  );
+
+  const handleBatchRefresh = useCallback(async () => {
+    if (!batchId) return;
+    const updated = await getBatchStatus(batchId);
+    setBatch(updated);
+  }, [batchId]);
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
@@ -103,10 +181,18 @@ export default function App() {
               variant="ghost"
               size="icon"
               onClick={() => setPanelCollapsed((c) => !c)}
-              title={panelCollapsed ? "Expand configuration" : "Collapse configuration"}
+              title={
+                panelCollapsed
+                  ? "Expand configuration"
+                  : "Collapse configuration"
+              }
               className="shrink-0 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
             >
-              {panelCollapsed ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+              {panelCollapsed ? (
+                <PanelLeft className="h-5 w-5" />
+              ) : (
+                <PanelLeftClose className="h-5 w-5" />
+              )}
             </Button>
             <div className="min-w-0">
               <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">
@@ -120,11 +206,21 @@ export default function App() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-            title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            onClick={() =>
+              setTheme((t) => (t === "light" ? "dark" : "light"))
+            }
+            title={
+              theme === "light"
+                ? "Switch to dark mode"
+                : "Switch to light mode"
+            }
             className="shrink-0 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
           >
-            {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            {theme === "light" ? (
+              <Moon className="h-5 w-5" />
+            ) : (
+              <Sun className="h-5 w-5" />
+            )}
           </Button>
         </div>
       </header>
@@ -143,7 +239,10 @@ export default function App() {
               <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 Configuration
               </h2>
-              <GenerationForm isGenerating={isGenerating} onSubmit={runGeneration} />
+              <GenerationForm
+                isGenerating={isGenerating}
+                onSubmit={runGeneration}
+              />
             </div>
           </div>
         </aside>
@@ -152,7 +251,11 @@ export default function App() {
           className={`
             flex-1 flex flex-col min-w-0
             transition-[max-width] duration-300 ease-out
-            ${resultsFullscreen ? "fixed top-14 left-0 right-0 bottom-0 z-40 bg-neutral-50 dark:bg-neutral-900" : ""}
+            ${
+              resultsFullscreen
+                ? "fixed top-14 left-0 right-0 bottom-0 z-40 bg-neutral-50 dark:bg-neutral-900"
+                : ""
+            }
           `}
         >
           <div className="flex-1 flex flex-col min-h-0 p-4 max-w-[1800px] w-full mx-auto">
@@ -165,10 +268,16 @@ export default function App() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setResultsFullscreen((f) => !f)}
-                  title={resultsFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                  title={
+                    resultsFullscreen ? "Exit fullscreen" : "Fullscreen"
+                  }
                   className="shrink-0 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
                 >
-                  {resultsFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  {resultsFullscreen ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>
@@ -201,14 +310,22 @@ export default function App() {
             )}
 
             <div className="flex-1 min-h-0 overflow-hidden">
-              {isGenerating ? (
+              {isGenerating && !batch ? (
                 <ResultsTableSkeleton />
-              ) : (
-                <ResultsTable
-                  items={items}
-                  onExportCsv={() => {}}
+              ) : batch ? (
+                <BatchResultsView
+                  batch={batch}
+                  onRetry={handleRetryFeature}
+                  onBatchRefresh={handleBatchRefresh}
                   className="animate-fade-in"
                 />
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50/50 dark:border-neutral-700 dark:bg-neutral-800/30 py-16 text-center text-neutral-500 dark:text-neutral-400">
+                  <p className="text-sm">No batch yet.</p>
+                  <p className="mt-1 text-xs">
+                    Add one or more features and click Generate Test Cases.
+                  </p>
+                </div>
               )}
             </div>
           </div>

@@ -1,0 +1,10 @@
+{
+  "name": "ai-testcase-generator",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n api,web \"python main.py\" \"npm run dev --prefix frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
