@@ -39,9 +39,11 @@ class OllamaProvider(LLMProvider):
     async def generate_test_cases(self, prompt: str, **kwargs: object) -> str:
         max_retries = 3
         backoff_base_seconds = 1
+        model_id = kwargs.get("model_id") if isinstance(kwargs.get("model_id"), str) else None
+        model_name = model_id if model_id else self._settings.ollama_model
 
         payload: Dict[str, Any] = {
-            "model": self._settings.ollama_model,
+            "model": model_name,
             "prompt": prompt,
             "stream": False,
             "format": "json",
@@ -59,7 +61,7 @@ class OllamaProvider(LLMProvider):
                 logger.info(
                     "Requesting test case generation from Ollama",
                     extra={
-                        "model": self._settings.ollama_model,
+                        "model": model_name,
                         "attempt": attempt,
                         "max_retries": max_retries,
                     },

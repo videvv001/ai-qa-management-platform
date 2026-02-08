@@ -53,8 +53,12 @@ class OpenAIProvider(LLMProvider):
             if isinstance(kwargs.get("coverage_level"), str)
             else "medium"
         )
+        model_id = kwargs.get("model_id") if isinstance(kwargs.get("model_id"), str) else None
         model_profile = kwargs.get("model_profile") if isinstance(kwargs.get("model_profile"), str) else None
-        model_name = _resolve_openai_model(model_profile, self._settings.openai_model)
+        if model_id and model_id in ("gpt-4o-mini", "gpt-4o"):
+            model_name = model_id
+        else:
+            model_name = _resolve_openai_model(model_profile, self._settings.openai_model)
         max_tokens = calculate_dynamic_max_tokens(
             prompt=prompt,
             coverage_level=coverage_level,

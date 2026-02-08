@@ -5,20 +5,25 @@
 
 export type CoverageLevel = "low" | "medium" | "high" | "comprehensive";
 
-/** UI-only: Fast/Smart use OpenAI, Private uses Ollama. Never expose provider names in labels. */
-export type ModelProfile = "fast" | "smart" | "private";
+/** Model identifier sent to backend; provider is derived from it. */
+export type ModelId =
+  | "gpt-4o-mini"
+  | "gpt-4o"
+  | "gemini-2.5-flash"
+  | "llama-3.3-70b-versatile"
+  | "llama3.2:3b";
 
-/** Backend request: uses provider, not model_profile. */
-export type ApiProvider = "ollama" | "openai";
+/** Backend request: when model_id is set, provider is derived from it. */
+export type ApiProvider = "ollama" | "openai" | "gemini" | "groq";
 
 export interface GenerateTestCasesRequest {
   feature_name: string;
   feature_description: string;
   coverage_level: CoverageLevel;
-  /** Backend uses this to choose Ollama vs OpenAI. */
   provider?: ApiProvider;
-  /** Backend uses this to choose gpt-4o-mini (fast) vs gpt-4o (smart) when provider is OpenAI. */
-  model_profile?: ModelProfile;
+  model_profile?: "fast" | "smart" | "private";
+  /** When set, backend derives provider (gpt-4o-mini, gpt-4o -> openai; gemini-2.5-flash -> gemini; llama-3.3-70b-versatile -> groq; llama3.2:3b -> ollama). */
+  model_id?: ModelId;
 }
 
 export interface TestCaseItem {
@@ -52,8 +57,9 @@ export interface FeatureConfigPayload {
 
 export interface BatchGenerateRequest {
   provider?: ApiProvider;
-  /** fast = gpt-4o-mini, smart = gpt-4o when provider is OpenAI. */
-  model_profile?: ModelProfile;
+  model_profile?: "fast" | "smart" | "private";
+  /** Model identifier; when set, provider is derived from it. */
+  model_id?: ModelId;
   features: FeatureConfigPayload[];
 }
 

@@ -134,11 +134,15 @@ class GenerateTestCasesRequest(BaseModel):
     )
     provider: Optional[str] = Field(
         default=None,
-        description="LLM provider: 'ollama' or 'openai'. Uses default from config if omitted.",
+        description="LLM provider: 'ollama', 'openai', or 'gemini'. Derived from model_id when model_id is set.",
     )
     model_profile: Optional[ModelProfile] = Field(
         default=None,
-        description="UI profile: 'fast' (gpt-4o-mini), 'smart' (gpt-4o), 'private' (Ollama). Used by OpenAI to pick model.",
+        description="(Legacy) UI profile: 'fast' (gpt-4o-mini), 'smart' (gpt-4o), 'private' (Ollama). Prefer model_id.",
+    )
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Model identifier: gpt-4o-mini, gpt-4o, gemini-2.5-flash, llama-3.3-70b-versatile, llama3.2:3b. When set, provider is derived from it.",
     )
 
     @model_validator(mode="before")
@@ -194,11 +198,15 @@ class BatchGenerateRequest(BaseModel):
 
     provider: Optional[str] = Field(
         default=None,
-        description="LLM provider: 'ollama' or 'openai'. Uses default from config if omitted.",
+        description="LLM provider: 'ollama', 'openai', or 'gemini'. Derived from model_id when model_id is set.",
     )
     model_profile: Optional[ModelProfile] = Field(
         default=None,
-        description="UI profile: 'fast' (gpt-4o-mini), 'smart' (gpt-4o), 'private' (Ollama).",
+        description="(Legacy) UI profile. Prefer model_id.",
+    )
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Model identifier: gpt-4o-mini, gpt-4o, gemini-2.5-flash, llama-3.3-70b-versatile, llama3.2:3b. When set, provider is derived from it.",
     )
     features: List[FeatureConfig] = Field(
         ...,

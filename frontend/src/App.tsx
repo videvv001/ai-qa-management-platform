@@ -13,11 +13,7 @@ import { BatchResultsView } from "@/components/BatchResultsView";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { batchGenerate, getBatchStatus, retryBatchFeature } from "@/api/client";
-import type {
-  ApiProvider,
-  BatchStatusResponse,
-  ModelProfile,
-} from "@/api/types";
+import type { BatchStatusResponse } from "@/api/types";
 
 const THEME_KEY = "ai-tc-gen-theme";
 const PANEL_KEY = "ai-tc-gen-panel-collapsed";
@@ -38,8 +34,11 @@ function getStoredPanelCollapsed(): boolean {
   return false;
 }
 
-function modelProfileToProvider(profile: ModelProfile): ApiProvider {
-  return profile === "private" ? "ollama" : "openai";
+function modelIdToProvider(modelId: string): "ollama" | "openai" | "gemini" | "groq" {
+  if (modelId === "gpt-4o-mini" || modelId === "gpt-4o") return "openai";
+  if (modelId === "gemini-2.5-flash") return "gemini";
+  if (modelId === "llama-3.3-70b-versatile") return "groq";
+  return "ollama";
 }
 
 function buildFeatureDescription(f: SingleFeatureValues): string {
@@ -99,7 +98,6 @@ export default function App() {
     setBatch(null);
     setBatchId(null);
     try {
-      const provider = modelProfileToProvider(values.modelProfile);
       const features = values.features.map((f) => ({
         feature_name: f.featureName.trim(),
         feature_description: buildFeatureDescription(f),
@@ -108,8 +106,7 @@ export default function App() {
         coverage_level: f.coverageLevel,
       }));
       const res = await batchGenerate({
-        provider,
-        model_profile: values.modelProfile,
+        model_id: values.modelId,
         features,
       });
       setBatchId(res.batch_id);
@@ -157,7 +154,7 @@ export default function App() {
     async (featureId: string) => {
       if (!batchId || !batch) return;
       const provider = lastValues
-        ? modelProfileToProvider(lastValues.modelProfile)
+        ? modelIdToProvider(lastValues.modelId)
         : undefined;
       await retryBatchFeature(batchId, featureId, provider);
       const updated = await getBatchStatus(batchId);

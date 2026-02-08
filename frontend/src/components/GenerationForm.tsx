@@ -1,11 +1,23 @@
-import { useState, useCallback } from "react";
-import { Eraser, Loader2, Plus, X } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Eraser, Loader2, Plus, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
-import type { CoverageLevel, ModelProfile } from "@/api/types";
+import type { CoverageLevel, ModelId } from "@/api/types";
+
+import googleIcon from "@/assets/icons/google.svg";
+import groqIcon from "@/assets/icons/groq.svg";
+import localIcon from "@/assets/icons/local.svg";
+import openaiIcon from "@/assets/icons/openai.svg";
+
+export type ModelOption = {
+  label: string;
+  value: ModelId;
+  icon: string;
+};
 
 /** Per-feature config (no model profile). */
 export interface SingleFeatureValues {
@@ -16,15 +28,15 @@ export interface SingleFeatureValues {
   coverageLevel: CoverageLevel;
 }
 
-/** Batch form: multiple features + single model profile. */
+/** Batch form: multiple features + single model selection. */
 export interface BatchFormValues {
   features: SingleFeatureValues[];
-  modelProfile: ModelProfile;
+  modelId: ModelId;
 }
 
-/** Legacy single-feature shape including model profile. */
+/** Legacy single-feature shape including model. */
 export interface GenerationFormValues extends SingleFeatureValues {
-  modelProfile: ModelProfile;
+  modelId: ModelId;
 }
 
 const COVERAGE_OPTIONS: { value: CoverageLevel; label: string }[] = [
@@ -34,10 +46,12 @@ const COVERAGE_OPTIONS: { value: CoverageLevel; label: string }[] = [
   { value: "comprehensive", label: "Comprehensive" },
 ];
 
-const MODEL_PROFILE_OPTIONS: { value: ModelProfile; label: string }[] = [
-  { value: "fast", label: "⚡ Fast (Recommended)" },
-  { value: "smart", label: "🧠 Smart" },
-  { value: "private", label: "🔒 Private (Local)" },
+const MODEL_OPTIONS: ModelOption[] = [
+  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", icon: googleIcon },
+  { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B (Groq)", icon: groqIcon },
+  { value: "llama3.2:3b", label: "Llama 3.2 3B (Local)", icon: localIcon },
+  { value: "gpt-4o-mini", label: "GPT-4o Mini", icon: openaiIcon },
+  { value: "gpt-4o", label: "GPT-4o", icon: openaiIcon },
 ];
 
 const defaultSingleFeature: SingleFeatureValues = {
@@ -61,7 +75,20 @@ export function GenerationForm({ isGenerating, onSubmit }: GenerationFormProps) 
     { ...defaultSingleFeature },
   ]);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
-  const [modelProfile, setModelProfile] = useState<ModelProfile>("fast");
+  const [modelId, setModelId] = useState<ModelId>("gemini-2.5-flash");
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [modelDropdownOpen]);
 
   const updateFeature = useCallback((index: number, patch: Partial<SingleFeatureValues>) => {
     setFeatures((prev) =>
@@ -88,7 +115,7 @@ export function GenerationForm({ isGenerating, onSubmit }: GenerationFormProps) 
   const clearAll = useCallback(() => {
     setFeatures([{ ...defaultSingleFeature }]);
     setActiveTabIndex(0);
-    setModelProfile("fast");
+    setModelId("gemini-2.5-flash");
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -97,7 +124,7 @@ export function GenerationForm({ isGenerating, onSubmit }: GenerationFormProps) 
       (f) => f.featureName.trim() && f.featureDescription.trim()
     );
     if (!valid) return;
-    onSubmit({ features, modelProfile });
+    onSubmit({ features, modelId });
   };
 
   const safeIndex = Math.min(activeTabIndex, Math.max(0, features.length - 1));
@@ -228,7 +255,7 @@ export function GenerationForm({ isGenerating, onSubmit }: GenerationFormProps) 
                 <Label>Coverage Level</Label>
                 <Select
                   value={activeFeature.coverageLevel}
-                  onChange={(e) =>
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                     updateFeature(safeIndex, {
                       coverageLevel: e.target.value as CoverageLevel,
                     })
@@ -247,21 +274,64 @@ export function GenerationForm({ isGenerating, onSubmit }: GenerationFormProps) 
         )}
 
         <div className="space-y-1.5 pt-2 border-t border-neutral-200 dark:border-neutral-700">
-          <Label htmlFor="model-profile">AI Speed / Intelligence</Label>
-          <Select
-            id="model-profile"
-            value={modelProfile}
-            onChange={(e) => setModelProfile(e.target.value as ModelProfile)}
-            disabled={isGenerating}
-          >
-            {MODEL_PROFILE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </Select>
+          <Label id="model-select-label">Model</Label>
+          <div className="relative" ref={modelDropdownRef}>
+            <button
+              type="button"
+              id="model-select"
+              aria-haspopup="listbox"
+              aria-expanded={modelDropdownOpen}
+              aria-labelledby="model-select-label"
+              aria-label="Select AI model"
+              disabled={isGenerating}
+              onClick={() => setModelDropdownOpen((open) => !open)}
+              className={cn(
+                "flex h-10 w-full items-center rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-offset-neutral-900 dark:focus-visible:ring-neutral-400",
+                "gap-2"
+              )}
+            >
+              {(() => {
+                const selected = MODEL_OPTIONS.find((o) => o.value === modelId);
+                return selected ? (
+                  <>
+                    <img src={selected.icon} alt="" className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="flex-1 text-left">{selected.label}</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 opacity-50" aria-hidden />
+                  </>
+                ) : (
+                  <span className="flex-1 text-left">Select model</span>
+                );
+              })()}
+            </button>
+            {modelDropdownOpen && (
+              <ul
+                role="listbox"
+                aria-labelledby="model-select-label"
+                className="absolute top-full left-0 z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-600 dark:bg-neutral-800"
+              >
+                {MODEL_OPTIONS.map((opt) => (
+                  <li
+                    key={opt.value}
+                    role="option"
+                    aria-selected={opt.value === modelId}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700",
+                      opt.value === modelId && "bg-neutral-100 dark:bg-neutral-700"
+                    )}
+                    onClick={() => {
+                      setModelId(opt.value);
+                      setModelDropdownOpen(false);
+                    }}
+                  >
+                    <img src={opt.icon} alt="" className="h-4 w-4 shrink-0" aria-hidden />
+                    <span>{opt.label}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Choose between speed, deeper reasoning, or local privacy.
+            Select the AI model for test case generation.
           </p>
         </div>
 

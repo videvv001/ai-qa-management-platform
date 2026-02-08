@@ -49,6 +49,28 @@ class Settings(BaseSettings):
     )
     openai_timeout_seconds: int = Field(default=120)
 
+    # Gemini (when provider is gemini)
+    gemini_api_key: Optional[str] = Field(
+        default=None,
+        description="Gemini API key. Required when using Gemini provider. Set AI_TC_GEN_GEMINI_API_KEY in .env.",
+    )
+    gemini_model: str = Field(
+        default="gemini-2.5-flash",
+        description="Gemini model name for test generation.",
+    )
+    gemini_timeout_seconds: int = Field(default=120)
+
+    # Groq (when provider is groq)
+    groq_api_key: Optional[str] = Field(
+        default=None,
+        description="Groq API key. Required when using Groq provider. Set AI_TC_GEN_GROQ_API_KEY in .env.",
+    )
+    groq_model: str = Field(
+        default="llama-3.3-70b-versatile",
+        description="Groq model name for test generation.",
+    )
+    groq_timeout_seconds: int = Field(default=120)
+
     # Security (placeholder for future auth)
     api_key_header_name: Optional[str] = Field(default=None)
 

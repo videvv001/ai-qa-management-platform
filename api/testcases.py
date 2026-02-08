@@ -179,11 +179,13 @@ async def batch_generate(
     """
     Start a batch job: generate test cases for multiple features in parallel.
     Returns batch_id immediately; poll GET /batches/{batch_id} for status and results.
+    When model_id is set, provider is derived from it (gpt-4o-mini, gpt-4o, gemini-2.5-flash, llama-3.3-70b-versatile, llama3.2:3b).
     """
     batch_id = await service.start_batch(
         provider=payload.provider,
         features=payload.features,
         model_profile=payload.model_profile,
+        model_id=payload.model_id,
     )
     return BatchGenerateResponse(batch_id=batch_id)
 

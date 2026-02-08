@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 from core.config import get_settings
 from providers.base import LLMProvider
-from providers.factory import get_provider
+from providers.factory import get_provider, model_id_to_provider
 from schemas.testcase import (
     BatchFeatureResult,
     BatchStatusResponse,
@@ -50,6 +50,7 @@ class _BatchState:
     features: Dict[str, _FeatureResultState] = field(default_factory=dict)
     provider: Optional[str] = None
     model_profile: Optional[str] = None
+    model_id: Optional[str] = None
     config_by_feature_id: Dict[str, FeatureConfig] = field(default_factory=dict)
 
 
@@ -221,10 +222,12 @@ class TestCaseService:
             min_scenarios_hint=min_hint,
             expansion_request=expansion_request,
         )
+        model_id = getattr(self, "_current_model_id", None)
         raw_output = await provider.generate_test_cases(
             prompt,
             coverage_level=coverage_level,
             model_profile=model_profile,
+            model_id=model_id,
         )
         try:
             cleaned = self._extract_json_object(raw_output)
@@ -295,10 +298,12 @@ class TestCaseService:
             scenarios=scenarios,
             existing_test_cases_json=existing_json,
         )
+        model_id = getattr(self, "_current_model_id", None)
         raw_output = await provider.generate_test_cases(
             prompt,
             coverage_level=coverage_level,
             model_profile=model_profile,
+            model_id=model_id,
         )
         try:
             cleaned = self._extract_json_object(raw_output)
@@ -330,6 +335,7 @@ class TestCaseService:
         existing_cases: List[TestCase],
         coverage_level: str = "medium",
         model_profile: Optional[str] = None,
+        model_id: Optional[str] = None,
         scenario_embedding_cache: Optional[Dict[str, List[float]]] = None,
         openai_api_key: Optional[str] = None,
     ) -> List[TestCase]:
@@ -500,7 +506,14 @@ class TestCaseService:
         deduplication, then title-based fallback. Higher coverage_level always
         includes all lower-level dimensions.
         """
-        provider = get_provider(payload.provider)
+        payload_model_id = getattr(payload, "model_id", None)
+        provider_name = (
+            model_id_to_provider(payload_model_id)
+            if payload_model_id
+            else payload.provider
+        )
+        provider = get_provider(provider_name)
+        self._current_model_id = payload_model_id
         layers = COVERAGE_LEVEL_LAYERS.get(
             payload.coverage_level,
             COVERAGE_LEVEL_LAYERS["medium"],
@@ -536,6 +549,7 @@ class TestCaseService:
                 existing_cases=accumulated,
                 coverage_level=payload.coverage_level,
                 model_profile=getattr(payload, "model_profile", None),
+                model_id=getattr(payload, "model_id", None),
                 scenario_embedding_cache=scenario_embedding_cache,
                 openai_api_key=settings.openai_api_key,
             )
@@ -595,6 +609,7 @@ class TestCaseService:
         config: FeatureConfig,
         provider: Optional[str],
         model_profile: Optional[str] = None,
+        model_id: Optional[str] = None,
     ) -> GenerateTestCasesRequest:
         return GenerateTestCasesRequest(
             feature_name=config.feature_name,
@@ -604,6 +619,7 @@ class TestCaseService:
             coverage_level=config.coverage_level,
             provider=provider,
             model_profile=model_profile,
+            model_id=model_id,
         )
 
     async def _run_one_feature(
@@ -620,7 +636,8 @@ class TestCaseService:
         fr.status = "generating"
         try:
             model_profile = getattr(batch, "model_profile", None) if batch else None
-            req = self._feature_config_to_request(config, provider, model_profile)
+            model_id = getattr(batch, "model_id", None) if batch else None
+            req = self._feature_config_to_request(config, provider, model_profile, model_id)
             cases = await self.generate_ai_test_cases(req)
             for tc in cases:
                 self._store[tc.id] = tc
@@ -653,7 +670,10 @@ class TestCaseService:
         provider: Optional[str],
         features: List[FeatureConfig],
         model_profile: Optional[str] = None,
+        model_id: Optional[str] = None,
     ) -> str:
+        if model_id and not provider:
+            provider = model_id_to_provider(model_id)
         batch_id = str(uuid4())
         feature_states: Dict[str, _FeatureResultState] = {}
         config_by_feature_id: Dict[str, FeatureConfig] = {}
@@ -671,6 +691,7 @@ class TestCaseService:
             features=feature_states,
             provider=provider,
             model_profile=model_profile,
+            model_id=model_id,
             config_by_feature_id=config_by_feature_id,
         )
         self._batch_store[batch_id] = batch
