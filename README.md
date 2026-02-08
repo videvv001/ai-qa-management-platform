@@ -15,17 +15,21 @@ Internal service for generating high-quality test cases from requirements and fe
 
 ```text
 ai_testcase_generator/
-├── main.py                 # FastAPI app entrypoint
-├── api/                    # Health + test case endpoints
-├── core/                   # Config, logging
-├── services/               # Business logic (generation, batch, dedup)
-├── schemas/                # Pydantic request/response models
-├── providers/              # LLM providers (Ollama, OpenAI, Gemini, Groq)
-├── utils/                  # Prompts, embeddings, token allocation, Excel
+├── backend/                # Python FastAPI app (run from here)
+│   ├── app/                # Application package
+│   │   ├── main.py         # FastAPI app (uvicorn app.main:app)
+│   │   ├── api/            # Health + test case endpoints
+│   │   ├── core/           # Config, logging
+│   │   ├── providers/      # LLM providers (Ollama, OpenAI, Gemini, Groq)
+│   │   ├── schemas/        # Pydantic request/response models
+│   │   ├── services/       # Business logic (generation, batch, dedup)
+│   │   └── utils/          # Prompts, embeddings, token allocation, Excel
+│   ├── tests/
+│   ├── main.py             # Optional entrypoint (python main.py)
+│   └── requirements.txt
 ├── frontend/               # React + Vite UI
-├── tests/
-├── requirements.txt
 ├── package.json            # Root: npm run dev (backend + frontend)
+├── .env                    # Backend env vars (at root; backend loads via path)
 └── DOCUMENTATION.md        # Full production documentation
 ```
 
@@ -33,7 +37,10 @@ ai_testcase_generator/
 
 ### Backend
 
+From the project root, install Python dependencies in the backend:
+
 ```bash
+cd backend
 pip install -r requirements.txt
 ```
 
@@ -89,9 +96,20 @@ Open `http://localhost:5173` in your browser.
 
 ### Run backend only
 
+From the project root:
+
 ```bash
-python main.py
+cd backend && uvicorn app.main:app --reload
 ```
+
+Or from inside `backend/`:
+
+```bash
+cd backend
+uvicorn app.main:app --reload
+```
+
+Alternatively: `cd backend && python main.py` (no reload).
 
 API at `http://localhost:8000`. OpenAPI docs at `http://localhost:8000/docs`.
 
@@ -102,6 +120,14 @@ cd frontend && npm run dev
 ```
 
 Ensure the backend is already running at `http://localhost:8000`, or set `VITE_API_BASE_URL` in `frontend/.env` to point to the API.
+
+### Run backend tests
+
+From the project root:
+
+```bash
+cd backend && python -m pytest tests/ -v
+```
 
 ## Environment variables
 
@@ -118,7 +144,7 @@ Ensure the backend is already running at `http://localhost:8000`, or set `VITE_A
 | `AI_TC_GEN_GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model name |
 | `VITE_API_BASE_URL` | (empty) | API base URL in production; empty uses dev proxy |
 
-Use `.env` in the project root or `frontend/.env` for `VITE_*` variables.
+Use `.env` in the project root for backend variables (the backend loads it from the project root when run from `backend/`). Use `frontend/.env` for `VITE_*` variables.
 
 ## Key API endpoints
 

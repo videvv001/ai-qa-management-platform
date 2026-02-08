@@ -64,10 +64,10 @@ AI Test Case Generator is an internal backend service that produces structured t
 
 | Layer | Component | Responsibility |
 |-------|-----------|----------------|
-| **API** | `api/testcases.py` | HTTP handlers, request validation, delegates to service |
-| **API** | `api/health.py` | Liveness/readiness probe |
-| **Service** | `TestCaseService` | Business logic: generation, batch orchestration, storage, dedup |
-| **Providers** | `OllamaProvider`, `OpenAIProvider`, `GeminiProvider`, `GroqProvider` | LLM calls; implement `LLMProvider` interface |
+| **API** | `app.api.testcases` | HTTP handlers, request validation, delegates to service |
+| **API** | `app.api.health` | Liveness/readiness probe |
+| **Service** | `TestCaseService` (`app.services`) | Business logic: generation, batch orchestration, storage, dedup |
+| **Providers** | `OllamaProvider`, `OpenAIProvider`, `GeminiProvider`, `GroqProvider` (`app.providers`) | LLM calls; implement `LLMProvider` interface |
 | **Utils** | `prompt_builder` | Two-pass prompts (scenario extraction, test expansion) |
 | **Utils** | `embeddings` | Semantic dedup via OpenAI embeddings |
 | **Utils** | `token_allocation` | Dynamic `max_tokens` for OpenAI |
@@ -147,44 +147,49 @@ AI Test Case Generator is an internal backend service that produces structured t
 
 ```
 ai_testcase_generator/
-├── main.py                 # App factory, uvicorn entrypoint
-├── api/
-│   ├── __init__.py         # Route registration (health, testcases)
-│   ├── health.py           # GET /api/health
-│   └── testcases.py        # All test case endpoints
-├── core/
-│   ├── config.py           # Settings (pydantic-settings)
-│   └── logging_config.py   # Logging setup
-├── schemas/
-│   └── testcase.py         # Pydantic request/response models
-├── services/
-│   └── testcase_service.py # Business logic, batch orchestration
-├── providers/
-│   ├── base.py             # LLMProvider interface
-│   ├── factory.py          # get_provider(ollama|openai|gemini|groq)
-│   ├── ollama_provider.py  # Ollama HTTP
-│   ├── openai_provider.py  # OpenAI Chat
-│   ├── gemini_provider.py  # Gemini API (google-genai)
-│   └── groq_provider.py    # Groq API
-├── utils/
-│   ├── prompt_builder.py   # Two-pass prompts
-│   ├── embeddings.py       # Dedup (OpenAI embeddings)
-│   ├── token_allocation.py # Dynamic max_tokens
-│   ├── csv_filename.py     # OS-safe export filenames
-│   └── excel_exporter.py   # openpyxl export
-├── tests/
-│   └── test_health.py      # Health endpoint test
+├── backend/                # Python FastAPI app (run from here)
+│   ├── app/                # Application package (uvicorn app.main:app)
+│   │   ├── __init__.py
+│   │   ├── main.py         # App factory, FastAPI app
+│   │   ├── api/
+│   │   │   ├── __init__.py  # Route registration (health, testcases)
+│   │   │   ├── health.py    # GET /api/health
+│   │   │   └── testcases.py # All test case endpoints
+│   │   ├── core/
+│   │   │   ├── config.py   # Settings (pydantic-settings), .env from project root
+│   │   │   └── logging_config.py
+│   │   ├── schemas/
+│   │   │   └── testcase.py  # Pydantic request/response models
+│   │   ├── services/
+│   │   │   └── testcase_service.py # Business logic, batch orchestration
+│   │   ├── providers/
+│   │   │   ├── base.py      # LLMProvider interface
+│   │   │   ├── factory.py   # get_provider(ollama|openai|gemini|groq)
+│   │   │   ├── ollama_provider.py
+│   │   │   ├── openai_provider.py
+│   │   │   ├── gemini_provider.py
+│   │   │   └── groq_provider.py
+│   │   └── utils/
+│   │       ├── prompt_builder.py
+│   │       ├── embeddings.py
+│   │       ├── token_allocation.py
+│   │       ├── csv_filename.py
+│   │       └── excel_exporter.py
+│   ├── tests/
+│   │   └── test_health.py   # Health endpoint test
+│   ├── main.py              # Optional entrypoint (python main.py from backend/)
+│   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── api/            # client.ts, types.ts
-│   │   ├── assets/icons/   # Provider icons (google, groq, local, openai)
-│   │   ├── components/     # GenerationForm, BatchResultsView, ResultsTable
-│   │   ├── constants/      # exportColumns
-│   │   └── index.css       # Tailwind imports
-│   ├── vite.config.ts      # Proxy /api → backend
+│   │   ├── api/             # client.ts, types.ts
+│   │   ├── assets/icons/    # Provider icons (google, groq, local, openai)
+│   │   ├── components/      # GenerationForm, BatchResultsView, ResultsTable
+│   │   ├── constants/       # exportColumns
+│   │   └── index.css        # Tailwind imports
+│   ├── vite.config.ts       # Proxy /api → backend
 │   └── package.json
-├── requirements.txt
-├── package.json            # Root: concurrently (api + frontend)
+├── .env                     # Backend env vars (at root; backend loads via path)
+├── package.json             # Root: concurrently (backend + frontend)
 └── DOCUMENTATION.md
 ```
 
@@ -192,12 +197,12 @@ ai_testcase_generator/
 
 | Directory | Responsibility |
 |-----------|----------------|
-| `api/` | HTTP routing, error handling, thin handlers |
-| `core/` | App config, logging |
-| `schemas/` | Request/response models, validation |
-| `services/` | Generation, batch, storage, dedup |
-| `providers/` | LLM abstraction, provider implementations |
-| `utils/` | Prompts, embeddings, tokens, filenames, Excel |
+| `backend/app/api/` | HTTP routing, error handling, thin handlers |
+| `backend/app/core/` | App config, logging |
+| `backend/app/schemas/` | Request/response models, validation |
+| `backend/app/services/` | Generation, batch, storage, dedup |
+| `backend/app/providers/` | LLM abstraction, provider implementations |
+| `backend/app/utils/` | Prompts, embeddings, tokens, filenames, Excel |
 | `frontend/` | React app, API client, UI components |
 
 ---
@@ -216,10 +221,11 @@ ai_testcase_generator/
 ### Installation
 
 ```bash
-# Backend
+# Backend (from project root)
+cd backend
 pip install -r requirements.txt
 
-# Frontend
+# Frontend (from project root)
 cd frontend && npm install
 ```
 
@@ -241,17 +247,21 @@ cd frontend && npm install
 | `AI_TC_GEN_LOG_LEVEL` | `INFO` | Logging level |
 | `VITE_API_BASE_URL` | (empty) | Override API base in production; empty uses proxy |
 
-Use `.env` in project root or `frontend/.env` for `VITE_*` variables.
+Use `.env` in the project root for backend variables (the backend loads it from the project root when run from `backend/`). Use `frontend/.env` for `VITE_*` variables.
 
 ### Running Locally
 
 ```bash
-# Backend + frontend (recommended)
+# Backend + frontend (recommended, from project root)
 npm run dev
+# Starts: backend via "cd backend && uvicorn app.main:app --reload", frontend via "npm run dev --prefix frontend"
 
-# Or separately:
-python main.py          # Backend at http://localhost:8000
-cd frontend && npm run dev   # Frontend at http://localhost:5173
+# Or run backend only (from project root):
+cd backend && uvicorn app.main:app --reload
+# API at http://localhost:8000. OpenAPI docs at http://localhost:8000/docs
+
+# Or run frontend only (ensure backend is running first):
+cd frontend && npm run dev
 ```
 
 Frontend proxies `/api` to `http://localhost:8000` via Vite.
@@ -347,11 +357,14 @@ OpenAPI spec: `http://localhost:8000/docs`
 
 ### Current Tests
 
-- `tests/test_health.py`: Health endpoint returns 200 and expected body fields.
+- `backend/tests/test_health.py`: Health endpoint returns 200 and expected body fields.
 
 ### Test Execution
 
+From the project root, run tests from the backend directory:
+
 ```bash
+cd backend
 python -m pytest tests/ -v
 ```
 
