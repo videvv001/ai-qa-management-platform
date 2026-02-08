@@ -1,9 +1,13 @@
 import csv
 import io
-from typing import List
+import json
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from typing import Any, List, Tuple
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
 
 from app.schemas.testcase import (
@@ -18,6 +22,11 @@ from app.schemas.testcase import (
 from app.services.testcase_service import TestCaseService
 from app.utils.csv_filename import generate_csv_filename
 from app.utils.excel_exporter import test_cases_to_excel
+from app.utils.excel_template_merge import (
+    MAX_TEMPLATE_SIZE_BYTES,
+    merge_all_features_to_excel,
+    merge_test_cases_to_excel,
+)
 
 
 router = APIRouter()
@@ -283,3 +292,175 @@ async def export_batch_all(
             "Content-Disposition": f'attachment; filename="{filename}"',
         },
     )
+
+
+@router.post(
+    "/export-to-excel",
+    summary="Merge test cases into Excel template and download",
+)
+async def export_to_excel(
+    template: UploadFile = File(..., description="Excel .xlsx template file"),
+    test_cases: str = Form(..., alias="testCases", description="JSON array of test case objects"),
+    feature_name: str = Form(..., alias="featureName", description="Feature name for Test ID and filename"),
+) -> FileResponse:
+    """
+    Accept multipart: template (Excel .xlsx), testCases (JSON string), featureName.
+    Merges test cases into the template 'Test Cases' sheet and returns the Excel file.
+    """
+    if not template.filename or not template.filename.lower().endswith(".xlsx"):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only .xlsx template files are allowed",
+        )
+
+    content = await template.read()
+    if len(content) > MAX_TEMPLATE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Template must be under {MAX_TEMPLATE_SIZE_BYTES // (1024 * 1024)}MB",
+        )
+
+    try:
+        cases_list: List[Any] = json.loads(test_cases)
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid testCases JSON: {e}",
+        ) from e
+    if not isinstance(cases_list, list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="testCases must be a JSON array",
+        )
+
+    feature_safe = (feature_name or "export").strip() or "export"
+    name_part = "".join(c if c.isalnum() or c in " -_" else "_" for c in feature_safe)[:80]
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    out_filename = f"{name_part}_Test_Cases_{date_str}.xlsx"
+
+    tmp_dir = Path(tempfile.gettempdir())
+    template_path = tmp_dir / f"template_{id(template)}_{template.filename or 'template.xlsx'}"
+    try:
+        template_path.write_bytes(content)
+        out_path = merge_test_cases_to_excel(
+            str(template_path),
+            cases_list,
+            feature_name or "Export",
+        )
+        return FileResponse(
+            out_path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=out_filename,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to merge template: {e}",
+        ) from e
+    finally:
+        if template_path.exists():
+            try:
+                template_path.unlink()
+            except OSError:
+                pass
+
+
+@router.post(
+    "/export-all-to-excel",
+    summary="Merge all features' test cases into Excel template (one sheet per feature)",
+)
+async def export_all_to_excel(
+    template: UploadFile = File(..., description="Excel .xlsx template file"),
+    test_cases_by_feature: str = Form(
+        ...,
+        alias="testCasesByFeature",
+        description="JSON array of { featureName, testCases } objects",
+    ),
+) -> FileResponse:
+    """
+    Accept multipart: template (Excel .xlsx), testCasesByFeature (JSON string).
+    Merges each feature's test cases into a separate sheet (same structure as template).
+    Returns one Excel file.
+    """
+    if not template.filename or not template.filename.lower().endswith(".xlsx"):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only .xlsx template files are allowed",
+        )
+
+    content = await template.read()
+    if len(content) > MAX_TEMPLATE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Template must be under {MAX_TEMPLATE_SIZE_BYTES // (1024 * 1024)}MB",
+        )
+
+    try:
+        raw: Any = json.loads(test_cases_by_feature)
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid testCasesByFeature JSON: {e}",
+        ) from e
+    if not isinstance(raw, list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="testCasesByFeature must be a JSON array",
+        )
+
+    features_data: List[Tuple[str, List[Any]]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Each element must be { featureName, testCases }",
+            )
+        name = item.get("featureName") or item.get("feature_name") or ""
+        cases = item.get("testCases") or item.get("test_cases") or []
+        if not isinstance(cases, list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="testCases must be an array",
+            )
+        features_data.append((str(name).strip() or "Feature", cases))
+
+    if not features_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one feature with test cases is required",
+        )
+
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    out_filename = f"All_Features_Test_Cases_{date_str}.xlsx"
+
+    tmp_dir = Path(tempfile.gettempdir())
+    template_path = tmp_dir / f"template_all_{id(template)}_{template.filename or 'template.xlsx'}"
+    try:
+        template_path.write_bytes(content)
+        out_path = merge_all_features_to_excel(str(template_path), features_data)
+        return FileResponse(
+            out_path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=out_filename,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to merge template: {e}",
+        ) from e
+    finally:
+        if template_path.exists():
+            try:
+                template_path.unlink()
+            except OSError:
+                pass

@@ -1,6 +1,6 @@
 # AI Test Case Generator
 
-Internal service for generating high-quality test cases from requirements and feature descriptions using LLMs (Ollama, OpenAI, Gemini, or Groq). Includes a React UI for batch generation, per-feature and merged CSV export, and test case deletion.
+Internal service for generating high-quality test cases from requirements and feature descriptions using LLMs (Ollama, OpenAI, Gemini, or Groq). Includes a React UI for batch generation, per-feature and merged CSV export, **Excel template export** (single feature or all features combined), and test case deletion.
 
 ## Prerequisites
 
@@ -23,11 +23,11 @@ ai_testcase_generator/
 │   │   ├── providers/      # LLM providers (Ollama, OpenAI, Gemini, Groq)
 │   │   ├── schemas/        # Pydantic request/response models
 │   │   ├── services/       # Business logic (generation, batch, dedup)
-│   │   └── utils/          # Prompts, embeddings, token allocation, Excel
+│   │   └── utils/          # Prompts, embeddings, token allocation, Excel, excel_template_merge
 │   ├── tests/
 │   ├── main.py             # Optional entrypoint (python main.py)
 │   └── requirements.txt
-├── frontend/               # React + Vite UI
+├── frontend/               # React + Vite UI (BatchResultsView, TemplateUploadModal, useTemplateStorage)
 ├── package.json            # Root: npm run dev (backend + frontend)
 ├── .env                    # Backend env vars (at root; backend loads via path)
 └── DOCUMENTATION.md        # Full production documentation
@@ -94,6 +94,13 @@ This starts:
 
 Open `http://localhost:5173` in your browser.
 
+**Export options (batch results):**
+
+- **Export CSV** — Per-feature CSV download.
+- **Export All Features** — Merged CSV of all features (deduplicated).
+- **Export to Excel Template** — Per-feature: upload an `.xlsx` template; test cases are merged into the template’s “Test Cases” sheet (Summary sheet unchanged). Optional “Remember this template” stores it in the browser for next time.
+- **Export All to Excel Template** — Same template upload; all features’ test cases are combined into the single “Test Cases” sheet (Feature1’s cases first, then Feature2’s, etc.). Column A = sequential No. (1, 2, …); Column B = Test ID per feature (e.g. `TC_FEAT1_001`, `TC_FEAT2_001`).
+
 ### Run backend only
 
 From the project root:
@@ -154,7 +161,9 @@ Use `.env` in the project root for backend variables (the backend loads it from 
 - `GET /api/testcases/batches/{batch_id}` — batch status and per-feature results
 - `POST /api/testcases/batches/{batch_id}/features/{feature_id}/retry` — retry failed feature
 - `GET /api/testcases/batches/{batch_id}/export-all` — download merged CSV
+- `POST /api/testcases/export-to-excel` — **Export to Excel template** (single feature). Multipart: `template` (.xlsx), `testCases` (JSON), `featureName`. Returns Excel with test cases merged into the template’s “Test Cases” sheet.
+- `POST /api/testcases/export-all-to-excel` — **Export all features to Excel template**. Multipart: `template` (.xlsx), `testCasesByFeature` (JSON array of `{ featureName, testCases }`). Returns one Excel file with all features’ test cases combined in the template’s “Test Cases” sheet (Summary sheet unchanged).
 - `DELETE /api/testcases/{id}` — delete test case (excluded from exports)
 - `GET /api/testcases/csv-filename?feature_name=` — OS-safe filename for per-feature export
 
-See `DOCUMENTATION.md` for full API reference and architecture details.
+See `DOCUMENTATION.md` for full API reference, Excel template structure, and architecture details.

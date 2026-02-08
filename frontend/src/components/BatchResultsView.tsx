@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FileSpreadsheet,
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -11,8 +12,23 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ResultsTable, exportToCsv } from "@/components/ResultsTable";
+import { TemplateUploadModal } from "@/components/TemplateUploadModal";
 import type { BatchFeatureResult, BatchStatusResponse, TestCaseItem } from "@/api/types";
-import { deleteTestCase, getBatchExportAllUrl, getCsvFilename } from "@/api/client";
+import {
+  deleteTestCase,
+  exportAllToExcelTemplate,
+  exportToExcelTemplate,
+  getBatchExportAllUrl,
+  getCsvFilename,
+  itemToExportPayload,
+} from "@/api/client";
+import type { ExportAllFeaturePayload } from "@/api/client";
+import {
+  clearStoredTemplate,
+  fileToBase64,
+  getStoredTemplate,
+  setStoredTemplate,
+} from "@/hooks/useTemplateStorage";
 
 function StatusIcon({ status }: { status: BatchFeatureResult["status"] }) {
   switch (status) {
@@ -44,6 +60,10 @@ export function BatchResultsView({
 }: BatchResultsViewProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [excelModalFeature, setExcelModalFeature] = useState<BatchFeatureResult | null>(null);
+  const [excelModalExportAll, setExcelModalExportAll] = useState(false);
+  const [excelExporting, setExcelExporting] = useState(false);
+  const [excelStoredTemplate, setExcelStoredTemplate] = useState<ReturnType<typeof getStoredTemplate>>(null);
 
   const toggle = useCallback((featureId: string) => {
     setExpandedIds((prev) => {
@@ -79,6 +99,41 @@ export function BatchResultsView({
     [onBatchRefresh]
   );
 
+  const handleExportToExcel = useCallback(
+    async (file: File, remember: boolean) => {
+      setExcelExporting(true);
+      try {
+        if (excelModalExportAll) {
+          const featuresWithItems = batch.features.filter(
+            (f) => (f.items?.length ?? 0) > 0
+          );
+          if (featuresWithItems.length === 0) return;
+          const featuresData: ExportAllFeaturePayload[] = featuresWithItems.map(
+            (f) => ({
+              featureName: f.feature_name,
+              testCases: (f.items ?? []).map((tc) =>
+                itemToExportPayload(tc as TestCaseItem)
+              ),
+            })
+          );
+          await exportAllToExcelTemplate(file, featuresData);
+        } else {
+          if (!excelModalFeature) return;
+          const items = (excelModalFeature.items ?? []) as TestCaseItem[];
+          if (items.length === 0) return;
+          await exportToExcelTemplate(file, items, excelModalFeature.feature_name);
+        }
+        if (remember) {
+          const base64 = await fileToBase64(file);
+          setStoredTemplate(file.name, base64);
+        }
+      } finally {
+        setExcelExporting(false);
+      }
+    },
+    [excelModalExportAll, excelModalFeature, batch.features]
+  );
+
   const totalItems = batch.features.reduce(
     (sum, f) => sum + (f.items?.length ?? 0),
     0
@@ -98,15 +153,30 @@ export function BatchResultsView({
           </span>
         </div>
         {hasAnyResults && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportAll}
-            className="shrink-0"
-          >
-            <Download className="h-4 w-4" />
-            Export All Features
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportAll}
+              className="shrink-0"
+            >
+              <Download className="h-4 w-4" />
+              Export All Features
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setExcelModalExportAll(true);
+                setExcelModalFeature(null);
+                setExcelStoredTemplate(getStoredTemplate());
+              }}
+              className="shrink-0"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Export All to Excel Template
+            </Button>
+          </div>
         )}
       </div>
 
@@ -145,15 +215,30 @@ export function BatchResultsView({
                 </button>
                 <div className="flex items-center gap-2 shrink-0">
                   {canExport && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleExportFeature(fr)}
-                      className="h-8"
-                    >
-                      <Download className="h-4 w-4" />
-                      Export CSV
-                    </Button>
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleExportFeature(fr)}
+                        className="h-8"
+                      >
+                        <Download className="h-4 w-4" />
+                        Export CSV
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setExcelModalFeature(fr);
+                          setExcelModalExportAll(false);
+                          setExcelStoredTemplate(getStoredTemplate());
+                        }}
+                        className="h-8"
+                      >
+                        <FileSpreadsheet className="h-4 w-4" />
+                        Export to Excel Template
+                      </Button>
+                    </>
                   )}
                   {fr.status === "failed" && (
                     <Button
@@ -209,6 +294,27 @@ export function BatchResultsView({
           );
         })}
       </div>
+
+      <TemplateUploadModal
+        open={excelModalFeature !== null || excelModalExportAll}
+        onClose={() => {
+          setExcelModalFeature(null);
+          setExcelModalExportAll(false);
+        }}
+        onExport={handleExportToExcel}
+        isLoading={excelExporting}
+        storedTemplate={excelStoredTemplate}
+        onClearTemplate={() => {
+          clearStoredTemplate();
+          setExcelStoredTemplate(null);
+        }}
+        title={excelModalExportAll ? "Export All Features to Excel Template" : undefined}
+        description={
+          excelModalExportAll
+            ? `This will create one Excel file with ${batch.features.filter((f) => (f.items?.length ?? 0) > 0).length} sheet${batch.features.filter((f) => (f.items?.length ?? 0) > 0).length === 1 ? "" : "s"} (one per feature).`
+            : undefined
+        }
+      />
     </div>
   );
 }

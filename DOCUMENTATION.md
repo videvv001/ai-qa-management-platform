@@ -4,7 +4,7 @@
 
 ### Purpose
 
-AI Test Case Generator is an internal backend service that produces structured test cases from feature descriptions and requirements using LLMs (Ollama, OpenAI, Gemini, or Groq). It supports single-feature and batch generation, with scenario-driven coverage, deduplication, and CSV/Excel export.
+AI Test Case Generator is an internal backend service that produces structured test cases from feature descriptions and requirements using LLMs (Ollama, OpenAI, Gemini, or Groq). It supports single-feature and batch generation, with scenario-driven coverage, deduplication, CSV export, and **Excel template export** (merge test cases into an uploaded .xlsx template).
 
 ### Problems It Solves
 
@@ -12,7 +12,7 @@ AI Test Case Generator is an internal backend service that produces structured t
 - **Coverage gaps**: Uses coverage dimensions (core, validation, negative, boundary, state, security, destructive) to guide scenarios.
 - **Duplication**: Applies embedding-based and title-based deduplication to avoid redundant test cases.
 - **Inconsistency**: Produces standardized, structured test cases with scenario, description, preconditions, steps, and expected results.
-- **Export flexibility**: Supports CSV (per-feature and merged) and Excel export for test management tools.
+- **Export flexibility**: Supports CSV (per-feature and merged) and Excel template export: upload an .xlsx template; test cases are merged into the “Test Cases” sheet (single feature or all features combined) with formatting preserved.
 
 ### Target Users
 
@@ -30,8 +30,8 @@ AI Test Case Generator is an internal backend service that produces structured t
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              Frontend (React + Vite)                         │
 │  ┌─────────────┐  ┌─────────────────┐  ┌──────────────────────────────────┐ │
-│  │GenerationForm│  │BatchResultsView │  │ResultsTable (per-feature export) │ │
-│  └──────┬──────┘  └────────┬────────┘  └──────────────────────────────────┘ │
+│  │GenerationForm│  │BatchResultsView │  │ResultsTable, TemplateUploadModal  │ │
+│  └──────┬──────┘  └────────┬────────┘  │(Export CSV / Export to Excel)      │ │
 │         │                  │                                                  │
 │         └──────────────────┼──────────────────────────────────────────────────┤
 │                            │  API Client (fetch)                               │
@@ -48,7 +48,7 @@ AI Test Case Generator is an internal backend service that produces structured t
 │                               ▼                                               │
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
 │  │ utils: prompt_builder, embeddings, token_allocation, csv_filename,       │ │
-│  │        excel_exporter                                                    │ │
+│  │        excel_exporter, excel_template_merge (export-to-excel)           │ │
 │  └─────────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
                              │
@@ -73,6 +73,7 @@ AI Test Case Generator is an internal backend service that produces structured t
 | **Utils** | `token_allocation` | Dynamic `max_tokens` for OpenAI |
 | **Utils** | `csv_filename` | OS-safe filename generation for exports |
 | **Utils** | `excel_exporter` | Excel file generation (openpyxl) |
+| **Utils** | `excel_template_merge` | Merge test cases into uploaded .xlsx template (single or all features); preserve Summary sheet and “Test Cases” structure (rows 1–2 headers, row 3+ data, columns A–L) |
 
 ### Data Flow
 
@@ -86,8 +87,8 @@ AI Test Case Generator is an internal backend service that produces structured t
 1. `POST /batch-generate` → `start_batch()` creates `_BatchState`, spawns `asyncio.gather()` per feature  
 2. Each feature runs `_run_one_feature()` → `generate_ai_test_cases()` → updates `fr.items`  
 3. Frontend polls `GET /batches/{batch_id}` (e.g. 1.5s interval) until `completed` or `partial`  
-4. Per-feature export: frontend calls `getCsvFilename()`, then `exportToCsv(items)`  
-5. Export All: `GET /batches/{batch_id}/export-all` → `get_batch_merged_cases(dedupe=True)` → CSV
+4. Per-feature export: frontend calls `getCsvFilename()`, then `exportToCsv(items)`; or **Export to Excel Template**: upload .xlsx → `POST /export-to-excel` (template, testCases, featureName) → merged Excel download.  
+5. Export All: `GET /batches/{batch_id}/export-all` → merged CSV; or **Export All to Excel Template**: upload .xlsx → `POST /export-all-to-excel` (template, testCasesByFeature) → one Excel with all features’ test cases combined in the “Test Cases” sheet.
 
 **Delete**  
 1. `DELETE /testcases/{id}` → `delete_test_case()` removes from `_store` and from all `fr.items`  
@@ -129,7 +130,8 @@ AI Test Case Generator is an internal backend service that produces structured t
 | `google-genai` | Gemini API (google-genai SDK) |
 | `groq` | Groq API (llama-3.3-70b-versatile) |
 | `tiktoken` | Token estimation for dynamic max_tokens |
-| `openpyxl` | Excel export |
+| `openpyxl` | Excel export and template merge |
+| `python-multipart` | Multipart form (file + form fields for export-to-excel) |
 | `lucide-react` | Icons |
 | `tailwindcss` | Styling |
 | `class-variance-authority`, `clsx`, `tailwind-merge` | Component variants |
@@ -174,7 +176,8 @@ ai_testcase_generator/
 │   │       ├── embeddings.py
 │   │       ├── token_allocation.py
 │   │       ├── csv_filename.py
-│   │       └── excel_exporter.py
+│   │       ├── excel_exporter.py
+│   │       └── excel_template_merge.py   # Merge test cases into .xlsx template
 │   ├── tests/
 │   │   └── test_health.py   # Health endpoint test
 │   ├── main.py              # Optional entrypoint (python main.py from backend/)
@@ -183,7 +186,8 @@ ai_testcase_generator/
 │   ├── src/
 │   │   ├── api/             # client.ts, types.ts
 │   │   ├── assets/icons/    # Provider icons (google, groq, local, openai)
-│   │   ├── components/      # GenerationForm, BatchResultsView, ResultsTable
+│   │   ├── components/      # GenerationForm, BatchResultsView, ResultsTable, TemplateUploadModal
+│   │   ├── hooks/           # useTemplateStorage (Excel template in localStorage)
 │   │   ├── constants/       # exportColumns
 │   │   └── index.css        # Tailwind imports
 │   ├── vite.config.ts       # Proxy /api → backend
@@ -290,12 +294,24 @@ curl -X POST http://localhost:8000/api/testcases/generate-test-cases \
 3. Choose model from the dropdown (default: **Gemini 2.5 Flash**). Options: Gemini 2.5 Flash, Llama 3.3 70B (Groq), Llama 3.2 3B (Local), GPT-4o Mini, GPT-4o.
 4. Click **Generate Test Cases**.
 5. Polling shows per-feature status; expand features to view results.
-6. Export: **Export to CSV** per feature, or **Export All Features** for merged CSV.
+6. Export: **Export CSV** per feature; **Export All Features** for merged CSV; **Export to Excel Template** (per feature) or **Export All to Excel Template** (all features combined into one “Test Cases” sheet).
 
 ### Export Workflow
 
 - **Per-feature CSV**: Uses backend-generated filename (`tc_{feature}_{timestamp}.csv`).
-- **Export All**: `GET /api/testcases/batches/{batch_id}/export-all` returns merged, deduplicated CSV.
+- **Export All (CSV)**: `GET /api/testcases/batches/{batch_id}/export-all` returns merged, deduplicated CSV.
+- **Export to Excel Template (single feature)**: Click “Export to Excel Template” on a feature → upload .xlsx (or use stored template) → optional “Remember this template” → Export. Backend merges that feature’s test cases into the template’s “Test Cases” sheet; **Summary** sheet is unchanged.
+- **Export All to Excel Template**: Click “Export All to Excel Template” (top right) → same template upload → Export. All features’ test cases are combined in order into the single “Test Cases” sheet (e.g. Feature1’s 5 cases, then Feature2’s 3 cases = 8 rows). Column A = sequential No. (1–8); Column B = Test ID per feature (e.g. `TC_FEAT1_001`, `TC_FEAT2_001`).
+
+### Excel Template Structure
+
+The template must contain a sheet named **“Test Cases”**. Expected layout:
+
+- **Rows 1–2**: Headers (merged cells allowed). Not modified.
+- **Row 3+**: Data rows. Existing data is cleared; new test cases are written from row 3.
+- **Columns A–L**: No., Test ID, Test Scenario, Test Description, Pre-condition, Test Data, Step (enumerated), Expected Result, Actual Result, Status, Comment, (empty). Formatting from row 3 is applied to new rows.
+
+If the template has a **Summary** sheet, it is left unchanged. Template file limit: 10 MB; `.xlsx` only.
 
 ### Delete Test Case
 
@@ -324,6 +340,8 @@ Base URL: `http://localhost:8000` (or configured host)
 | GET | `/api/testcases/{id}` | Get by ID |
 | DELETE | `/api/testcases/{id}` | Delete; removed from batch and exports |
 | GET | `/api/testcases/csv-filename` | `?feature_name=` for OS-safe filename |
+| POST | `/api/testcases/export-to-excel` | **Export to Excel template** (single feature). Multipart: `template` (.xlsx), `testCases` (JSON), `featureName`. Returns Excel with test cases in “Test Cases” sheet. |
+| POST | `/api/testcases/export-all-to-excel` | **Export all to Excel template**. Multipart: `template` (.xlsx), `testCasesByFeature` (JSON array of `{ featureName, testCases }`). Returns Excel with all features’ test cases combined in “Test Cases” sheet. |
 
 ### Batch
 
