@@ -40,7 +40,7 @@ from app.utils.excel_template_merge import (
     merge_module_cases_to_excel_template,
     merge_test_cases_to_excel,
 )
-from app.utils.import_parser import parse_file
+from app.utils.import_parser import parse_file, HeaderDetectionAmbiguous
 
 router = APIRouter()
 
@@ -492,6 +492,7 @@ async def import_from_file(
     files: List[UploadFile] = File(..., description="Excel or CSV files to import"),
     project_id: int = Form(..., description="Project ID to import into"),
     module_names: str = Form(default="{}", description="JSON: {filename: module_name}"),
+    header_rows: str = Form(default="{}", description="JSON: {filename: header_row} for Excel"),
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -509,6 +510,10 @@ async def import_from_file(
         name_map = json.loads(module_names) if module_names else {}
     except json.JSONDecodeError:
         name_map = {}
+    try:
+        header_row_map = json.loads(header_rows) if header_rows else {}
+    except json.JSONDecodeError:
+        header_row_map = {}
 
     imported_modules: List[dict] = []
     errors: List[dict] = []
@@ -526,8 +531,11 @@ async def import_from_file(
             errors.append({"file": fn, "error": f"Failed to read file: {e}"})
             continue
 
+        header_override = header_row_map.get(fn)
+        if header_override is not None:
+            header_override = int(header_override)
         try:
-            cases, meta, warnings = parse_file(content, fn)
+            cases, meta, warnings = parse_file(content, fn, header_row_override=header_override)
         except ValueError as e:
             errors.append({"file": fn, "error": str(e)})
             continue
@@ -569,6 +577,8 @@ async def import_from_file(
             item: dict = {"file": fn, "module_name": module.name, "test_cases_count": len(cases)}
             if meta.get("sheet_used"):
                 item["sheet_used"] = meta["sheet_used"]
+            if meta.get("header_format"):
+                item["header_format"] = meta["header_format"]
             if warnings:
                 item["warnings"] = warnings
             imported_modules.append(item)
@@ -589,8 +599,9 @@ async def import_from_file(
 )
 async def import_preview(
     file: UploadFile = File(..., description="Excel or CSV file to preview"),
+    header_row: int | None = Form(default=None, description="1 or 2 to force header row for Excel"),
 ) -> dict:
-    """Parse file and return preview (test cases, column map, row count, warnings)."""
+    """Parse file and return preview. For ambiguous Excel, returns needs_user_input with row previews."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="File has no filename")
     try:
@@ -599,7 +610,17 @@ async def import_preview(
         raise HTTPException(status_code=400, detail=f"Failed to read file: {e}")
 
     try:
-        cases, meta, warnings = parse_file(content, file.filename)
+        cases, meta, warnings = parse_file(
+            content, file.filename, header_row_override=header_row
+        )
+    except HeaderDetectionAmbiguous as e:
+        return {
+            "filename": file.filename,
+            "needs_user_input": True,
+            "row1_preview": e.row1_preview,
+            "row2_preview": e.row2_preview,
+            "row3_preview": e.row3_preview,
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -607,9 +628,11 @@ async def import_preview(
 
     return {
         "filename": file.filename,
+        "needs_user_input": False,
         "test_cases_count": len(cases),
         "column_map": meta.get("column_map", {}),
         "sheet_used": meta.get("sheet_used"),
+        "header_format": meta.get("header_format", "csv-standard"),
         "warnings": warnings,
         "preview": cases[:10],
     }

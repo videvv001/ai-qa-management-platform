@@ -434,12 +434,14 @@ export interface ImportResult {
 export async function importFromFile(
   projectId: number,
   files: File[],
-  moduleNames?: Record<string, string>
+  moduleNames?: Record<string, string>,
+  headerRows?: Record<string, number>
 ): Promise<ImportResult> {
   const base = getBaseUrl();
   const form = new FormData();
   form.append("project_id", String(projectId));
   form.append("module_names", JSON.stringify(moduleNames ?? {}));
+  form.append("header_rows", JSON.stringify(headerRows ?? {}));
   for (const f of files) {
     form.append("files", f);
   }
@@ -451,17 +453,30 @@ export async function importFromFile(
   return res.json();
 }
 
-export async function importPreview(file: File): Promise<{
+export interface ImportPreviewResult {
   filename: string;
-  test_cases_count: number;
-  column_map: Record<string, string>;
+  needs_user_input?: boolean;
+  row1_preview?: string[];
+  row2_preview?: string[];
+  row3_preview?: string[];
+  test_cases_count?: number;
+  column_map?: Record<string, string>;
   sheet_used?: string;
-  warnings: string[];
-  preview: unknown[];
-}> {
+  header_format?: string;
+  warnings?: string[];
+  preview?: unknown[];
+}
+
+export async function importPreview(
+  file: File,
+  headerRow?: number
+): Promise<ImportPreviewResult> {
   const base = getBaseUrl();
   const form = new FormData();
   form.append("file", file);
+  if (headerRow != null) {
+    form.append("header_row", String(headerRow));
+  }
   const res = await fetch(`${base}/api/testcases/import-preview`, {
     method: "POST",
     body: form,

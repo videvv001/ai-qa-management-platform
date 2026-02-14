@@ -1,18 +1,25 @@
 import { useState, useCallback, useRef } from "react";
 import { Upload, X, Loader2, AlertCircle, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { importFromFile, importPreview, type ImportResult } from "@/api/client";
+import { importFromFile, importPreview, type ImportResult, type ImportPreviewResult } from "@/api/client";
 
 interface FileEntry {
   file: File;
   moduleName: string;
+  headerRowOverride?: number; // 1 or 2 when user selected
   preview?: {
     test_cases_count: number;
     column_map: Record<string, string>;
     sheet_used?: string;
+    header_format?: string;
     warnings: string[];
   } | null;
   previewError?: string;
+  needsHeaderSelect?: {
+    row1_preview: string[];
+    row2_preview: string[];
+    row3_preview: string[];
+  };
 }
 
 interface Props {
@@ -66,6 +73,54 @@ export function ImportModal({
     );
   }, []);
 
+  const confirmHeaderRow = useCallback(async (idx: number, row: 1 | 2) => {
+    setPreviewing(true);
+    setError(null);
+    const entry = files[idx];
+    if (!entry) return;
+    try {
+      const data: ImportPreviewResult = await importPreview(entry.file, row);
+      if (data.needs_user_input) {
+        setFiles((prev) =>
+          prev.map((f, i) =>
+            i === idx
+              ? { ...f, needsHeaderSelect: { row1_preview: data.row1_preview || [], row2_preview: data.row2_preview || [], row3_preview: data.row3_preview || [] } }
+              : f
+          )
+        );
+      } else {
+        setFiles((prev) =>
+          prev.map((f, i) =>
+            i === idx
+              ? {
+                  ...f,
+                  headerRowOverride: row,
+                  preview: {
+                    test_cases_count: data.test_cases_count ?? 0,
+                    column_map: data.column_map || {},
+                    sheet_used: data.sheet_used,
+                    header_format: "user-selected",
+                    warnings: data.warnings || [],
+                  },
+                  needsHeaderSelect: undefined,
+                }
+              : f
+          )
+        );
+      }
+    } catch (e) {
+      setFiles((prev) =>
+        prev.map((f, i) =>
+          i === idx ? { ...f, previewError: e instanceof Error ? e.message : "Preview failed" } : f
+        )
+      );
+    } finally {
+      setPreviewing(false);
+    }
+  }, [files]);
+
+  const hasUnresolvedHeader = files.some((f) => f.needsHeaderSelect);
+
   const handlePreview = useCallback(async () => {
     if (files.length === 0) return;
     setPreviewing(true);
@@ -74,22 +129,38 @@ export function ImportModal({
     for (let i = 0; i < files.length; i++) {
       const entry = files[i];
       try {
-        const data = await importPreview(entry.file);
-        updated.push({
-          ...entry,
-          preview: {
-            test_cases_count: data.test_cases_count,
-            column_map: data.column_map || {},
-            sheet_used: data.sheet_used,
-            warnings: data.warnings || [],
-          },
-          previewError: undefined,
-        });
+        const data: ImportPreviewResult = await importPreview(entry.file, entry.headerRowOverride);
+        if (data.needs_user_input) {
+          updated.push({
+            ...entry,
+            preview: undefined,
+            previewError: undefined,
+            needsHeaderSelect: {
+              row1_preview: data.row1_preview || [],
+              row2_preview: data.row2_preview || [],
+              row3_preview: data.row3_preview || [],
+            },
+          });
+        } else {
+          updated.push({
+            ...entry,
+            preview: {
+              test_cases_count: data.test_cases_count ?? 0,
+              column_map: data.column_map || {},
+              sheet_used: data.sheet_used,
+              header_format: data.header_format,
+              warnings: data.warnings || [],
+            },
+            previewError: undefined,
+            needsHeaderSelect: undefined,
+          });
+        }
       } catch (e) {
         updated.push({
           ...entry,
           preview: undefined,
           previewError: e instanceof Error ? e.message : "Preview failed",
+          needsHeaderSelect: undefined,
         });
       }
     }
@@ -112,13 +183,18 @@ export function ImportModal({
     setResult(null);
     try {
       const moduleNames: Record<string, string> = {};
-      for (const { file, moduleName } of files) {
+      const headerRows: Record<string, number> = {};
+      for (const { file, moduleName, headerRowOverride } of files) {
         moduleNames[file.name] = moduleName.trim();
+        if (headerRowOverride != null) {
+          headerRows[file.name] = headerRowOverride;
+        }
       }
       const res = await importFromFile(
         projectId,
         files.map((f) => f.file),
-        moduleNames
+        moduleNames,
+        headerRows
       );
       setResult(res);
       if (res.imported_modules.length > 0) {
@@ -240,37 +316,100 @@ export function ImportModal({
               </h3>
               <div className="max-h-48 overflow-y-auto space-y-2 rounded border border-neutral-200 dark:border-neutral-700 p-2">
                 {files.map((entry, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-2 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 p-2"
-                  >
-                    <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate flex-1 min-w-0">
-                      {entry.file.name}
-                    </span>
-                    <input
-                      type="text"
-                      className="flex-1 min-w-0 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2 py-1 text-sm"
-                      placeholder="Module name"
-                      value={entry.moduleName}
-                      onChange={(e) => setModuleName(idx, e.target.value)}
-                    />
-                    {entry.preview && (
-                      <span className="text-xs text-emerald-600 dark:text-emerald-400 shrink-0">
-                        {entry.preview.test_cases_count} rows
+                  <div key={idx} className="space-y-2">
+                    <div className="flex items-center gap-2 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                      <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate flex-1 min-w-0">
+                        {entry.file.name}
                       </span>
+                      <input
+                        type="text"
+                        className="flex-1 min-w-0 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2 py-1 text-sm"
+                        placeholder="Module name"
+                        value={entry.moduleName}
+                        onChange={(e) => setModuleName(idx, e.target.value)}
+                      />
+                      {entry.preview && (
+                        <span className="flex items-center gap-1 shrink-0">
+                          <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                            {entry.preview.test_cases_count} rows
+                          </span>
+                          {entry.preview.header_format && (
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                entry.preview.header_format === "user-selected"
+                                  ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                                  : "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
+                              }`}
+                              title={
+                                entry.preview.header_format === "user-selected"
+                                  ? "User-confirmed header row"
+                                  : entry.preview.header_format === "csv-standard"
+                                    ? "CSV format"
+                                    : "Auto-detected"
+                              }
+                            >
+                              {entry.preview.header_format === "user-selected"
+                                ? "User"
+                                : entry.preview.header_format === "csv-standard"
+                                  ? "CSV"
+                                  : "Auto"}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                      {entry.previewError && (
+                        <span className="text-xs text-red-600 dark:text-red-400 shrink-0 truncate max-w-24" title={entry.previewError}>
+                          Error
+                        </span>
+                      )}
+                      {entry.needsHeaderSelect && (
+                        <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0">Confirm header</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeFile(idx)}
+                        className="shrink-0 p-1 rounded text-neutral-500 hover:text-red-600 dark:hover:text-red-400"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {entry.needsHeaderSelect && (
+                      <div className="rounded border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20 p-3 text-sm">
+                        <p className="text-amber-800 dark:text-amber-200 font-medium mb-2">Please confirm header row</p>
+                        <div className="grid grid-cols-3 gap-2 text-xs mb-3 max-h-24 overflow-auto">
+                          <div>
+                            <span className="font-medium text-neutral-600 dark:text-neutral-400">Row 1:</span>
+                            <span className="ml-1 truncate block">{entry.needsHeaderSelect.row1_preview.slice(0, 5).join(", ")}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-neutral-600 dark:text-neutral-400">Row 2:</span>
+                            <span className="ml-1 truncate block">{entry.needsHeaderSelect.row2_preview.slice(0, 5).join(", ")}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-neutral-600 dark:text-neutral-400">Row 3:</span>
+                            <span className="ml-1 truncate block">{entry.needsHeaderSelect.row3_preview.slice(0, 5).join(", ")}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => confirmHeaderRow(idx, 1)}
+                            disabled={previewing}
+                          >
+                            Row 1 is headers
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => confirmHeaderRow(idx, 2)}
+                            disabled={previewing}
+                          >
+                            Row 2 is headers
+                          </Button>
+                        </div>
+                      </div>
                     )}
-                    {entry.previewError && (
-                      <span className="text-xs text-red-600 dark:text-red-400 shrink-0 truncate max-w-24" title={entry.previewError}>
-                        Error
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeFile(idx)}
-                      className="shrink-0 p-1 rounded text-neutral-500 hover:text-red-600 dark:hover:text-red-400"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
                   </div>
                 ))}
               </div>
@@ -345,7 +484,8 @@ export function ImportModal({
             <Button
               size="sm"
               onClick={handleImport}
-              disabled={importing || files.length === 0}
+              disabled={importing || files.length === 0 || hasUnresolvedHeader}
+              title={hasUnresolvedHeader ? "Resolve header selection for all files first" : undefined}
             >
               {importing ? (
                 <>
