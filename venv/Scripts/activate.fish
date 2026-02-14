@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV 'F:\project\tool\ai_testcase_generator\venv'
+set -gx VIRTUAL_ENV 'F:\project\tool\newaitool\qaplat\venv'
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"Scripts $PATH

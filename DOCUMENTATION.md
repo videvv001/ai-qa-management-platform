@@ -1,10 +1,10 @@
-# AI Test Case Generator — Production Documentation
+# QA Platform — Production Documentation
 
 ## 1. Project Overview
 
 ### Purpose
 
-AI Test Case Generator is an internal backend service that produces structured test cases from feature descriptions and requirements using LLMs (Ollama, OpenAI, Gemini, or Groq). It supports single-feature and batch generation, with scenario-driven coverage, deduplication, CSV export, and **Excel template export** (merge test cases into an uploaded .xlsx template).
+QA Platform (qaplat) is a personal QA application that combines **AI-powered test case generation** with **persistent test management**. It produces structured test cases from feature descriptions using LLMs (Ollama, OpenAI, Gemini, or Groq), and stores them in **SQLite** under **projects** and **modules**. You can run executions (status + actual result) in a table UI and track history. The system supports single-feature and batch generation, scenario-driven coverage, deduplication, CSV/Excel export, **Save to Project**, and **execution tracking** with a dashboard.
 
 ### Problems It Solves
 
@@ -12,13 +12,14 @@ AI Test Case Generator is an internal backend service that produces structured t
 - **Coverage gaps**: Uses coverage dimensions (core, validation, negative, boundary, state, security, destructive) to guide scenarios.
 - **Duplication**: Applies embedding-based and title-based deduplication to avoid redundant test cases.
 - **Inconsistency**: Produces standardized, structured test cases with scenario, description, preconditions, steps, and expected results.
-- **Export flexibility**: Supports CSV (per-feature and merged) and Excel template export: upload an .xlsx template; test cases are merged into the “Test Cases” sheet (single feature or all features combined) with formatting preserved.
+- **Export flexibility**: Supports CSV (per-feature and merged) and Excel template export; upload an .xlsx template and merge test cases into the “Test Cases” sheet.
+- **Persistence**: Organize test cases in projects and modules (SQLite); record execution status and actual results; view execution history and dashboard stats.
 
 ### Target Users
 
-- QA engineers generating test cases from specs
-- Developers performing exploratory test design
-- Teams wanting local (Ollama) or cloud (OpenAI, Gemini, Groq) LLM-based generation
+- QA engineers generating and organizing test cases from specs
+- Developers performing exploratory test design and execution tracking
+- Teams wanting local (Ollama) or cloud (OpenAI, Gemini, Groq) LLM-based generation with persistent storage
 
 ---
 
@@ -28,35 +29,42 @@ AI Test Case Generator is an internal backend service that produces structured t
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Frontend (React + Vite)                         │
-│  ┌─────────────┐  ┌─────────────────┐  ┌──────────────────────────────────┐ │
-│  │GenerationForm│  │BatchResultsView │  │ResultsTable, TemplateUploadModal  │ │
-│  └──────┬──────┘  └────────┬────────┘  │(Export CSV / Export to Excel)      │ │
-│         │                  │                                                  │
-│         └──────────────────┼──────────────────────────────────────────────────┤
-│                            │  API Client (fetch)                               │
-└────────────────────────────┼──────────────────────────────────────────────────┘
+│                        Frontend (React + Vite, React Router)                  │
+│  /  Generator   │  /projects   │  /projects/:id   │  /dashboard             │
+│  GenerationForm │  ProjectList │  ModuleTree      │  PersonalDashboard      │
+│  BatchResultsView│  ProjectForm│  ExecutionTable  │  (stats, recent activity)│
+│  SaveToProjectModal │ NewModuleModal │ TestCaseDetailModal                   │
+│                            │  API Client (fetch)                              │
+└────────────────────────────┼─────────────────────────────────────────────────┘
                              │  HTTP/REST
                              ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         Backend (FastAPI)                                    │
 │  ┌─────────────┐     ┌──────────────────┐     ┌───────────────────────────┐  │
 │  │api/testcases│────▶│TestCaseService   │────▶│Providers (Ollama/OpenAI/  │  │
-│  │api/health   │     │(in-memory store) │     │ Gemini/Groq)              │  │
-│  └─────────────┘     └────────┬─────────┘     └───────────────────────────┘  │
-│                               │                                               │
-│                               ▼                                               │
-│  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │ utils: prompt_builder, embeddings, token_allocation, csv_filename,       │ │
-│  │        excel_exporter, excel_template_merge (export-to-excel)           │ │
-│  └─────────────────────────────────────────────────────────────────────────┘ │
+│  │api/health   │     │(in-memory batch) │     │ Gemini/Groq)              │  │
+│  │api/projects │     └────────┬─────────┘     └───────────────────────────┘  │
+│  │api/modules  │             │                                               │
+│  └──────┬──────┘             ▼                                               │
+│         │          ┌─────────────────────────────────────────────────────┐  │
+│         │          │ utils: prompt_builder, embeddings, token_allocation, │  │
+│         │          │        csv_filename, excel_exporter, excel_template_merge│
+│         │          └─────────────────────────────────────────────────────┘  │
+│         │                                                                     │
+│         ▼          ┌─────────────────────────────────────────────────────┐  │
+│  ┌─────────────┐   │ database: SQLAlchemy (SQLite)                        │  │
+│  │ app.database│   │ Project, Module, TestCase, TestExecution             │  │
+│  │ connection  │   │ save-to-project, execute-batch, modules/testcases   │  │
+│  │ models      │   └─────────────────────────────────────────────────────┘  │
+│  └─────────────┘                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  External Services                                                           │
+│  External / local                                                            │
 │  - Ollama (localhost:11434) — local LLM                                      │
-│  - OpenAI API — chat completions + embeddings (text-embedding-3-small/large) │
+│  - OpenAI API — chat completions + embeddings                                │
+│  - SQLite (testcases.db) — persistent projects, modules, cases, executions │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -64,16 +72,16 @@ AI Test Case Generator is an internal backend service that produces structured t
 
 | Layer | Component | Responsibility |
 |-------|-----------|----------------|
-| **API** | `app.api.testcases` | HTTP handlers, request validation, delegates to service |
 | **API** | `app.api.health` | Liveness/readiness probe |
-| **Service** | `TestCaseService` (`app.services`) | Business logic: generation, batch orchestration, storage, dedup |
+| **API** | `app.api.testcases` | AI generation, batch, export; plus save-to-project, modules testcases, execute, execute-batch, executions, delete DB case |
+| **API** | `app.api.projects` | CRUD projects; get project with module tree |
+| **API** | `app.api.modules` | CRUD modules under a project; module tree |
+| **Database** | `app.database.connection` | SQLAlchemy engine (SQLite), SessionLocal, get_db, init_db |
+| **Database** | `app.database.models` | Project, Module, TestCase, TestExecution (ORM) |
+| **Service** | `TestCaseService` (`app.services`) | AI generation, batch orchestration, in-memory batch/store, dedup |
 | **Providers** | `OllamaProvider`, `OpenAIProvider`, `GeminiProvider`, `GroqProvider` (`app.providers`) | LLM calls; implement `LLMProvider` interface |
-| **Utils** | `prompt_builder` | Two-pass prompts (scenario extraction, test expansion) |
-| **Utils** | `embeddings` | Semantic dedup via OpenAI embeddings |
-| **Utils** | `token_allocation` | Dynamic `max_tokens` for OpenAI |
-| **Utils** | `csv_filename` | OS-safe filename generation for exports |
-| **Utils** | `excel_exporter` | Excel file generation (openpyxl) |
-| **Utils** | `excel_template_merge` | Merge test cases into uploaded .xlsx template (single or all features); preserve Summary sheet and “Test Cases” structure (rows 1–2 headers, row 3+ data, columns A–L) |
+| **Utils** | `prompt_builder`, `embeddings`, `token_allocation` | Prompts, semantic dedup, max_tokens |
+| **Utils** | `csv_filename`, `excel_exporter`, `excel_template_merge` | Exports and Excel template merge |
 
 ### Data Flow
 
@@ -90,9 +98,25 @@ AI Test Case Generator is an internal backend service that produces structured t
 4. Per-feature export: frontend calls `getCsvFilename()`, then `exportToCsv(items)`; or **Export to Excel Template**: upload .xlsx → `POST /export-to-excel` (template, testCases, featureName) → merged Excel download.  
 5. Export All: `GET /batches/{batch_id}/export-all` → merged CSV; or **Export All to Excel Template**: upload .xlsx → `POST /export-all-to-excel` (template, testCasesByFeature) → one Excel with all features’ test cases combined in the “Test Cases” sheet.
 
-**Delete**  
+**Delete (in-memory)**  
 1. `DELETE /testcases/{id}` → `delete_test_case()` removes from `_store` and from all `fr.items`  
 2. Frontend calls `deleteTestCase()` then `getBatchStatus()` to refresh UI
+
+**Save to Project**  
+1. User clicks “Save to Project” on a feature in batch results → `SaveToProjectModal` opens.  
+2. User selects project and module → `saveTestCasesToProject(moduleId, testCases)` → `POST /api/testcases/save-to-project` with `module_id` and `test_cases` array.  
+3. Backend inserts `TestCase` rows into the module; frontend closes modal.
+
+**Projects & modules**  
+1. Projects: CRUD via `app.api.projects`; list returns `modules_count`.  
+2. Modules: CRUD via `app.api.modules`; tree via `GET /api/projects/{id}/modules`.  
+3. Project detail UI: module tree (expand/collapse, select module); “+ New Module” opens modal (name + optional parent) → `createModule(projectId, { name, parent_id })` → refresh tree.
+
+**Execution**  
+1. Project detail: select module → `GET /api/testcases/modules/{module_id}/testcases` → `ExecutionTable` shows rows (Status, Test ID, Scenario, Actual Result, View).  
+2. User toggles status (Not Executed → Passed → Failed → Blocked) and edits actual result; clicks “Save All Changes” → `POST /api/testcases/modules/{module_id}/execute-batch` with `executions: [{ test_case_id, status, actual_result, notes }]`.  
+3. Backend creates `TestExecution` rows; frontend refetches test cases.  
+4. “View” opens `TestCaseDetailModal` with full case and `GET /api/testcases/{id}/executions` history.
 
 ### External Services
 
@@ -148,53 +172,47 @@ AI Test Case Generator is an internal backend service that produces structured t
 ## 4. Folder Structure
 
 ```
-ai_testcase_generator/
+qaplat/
 ├── backend/                # Python FastAPI app (run from here)
-│   ├── app/                # Application package (uvicorn app.main:app)
+│   ├── app/
 │   │   ├── __init__.py
-│   │   ├── main.py         # App factory, FastAPI app
+│   │   ├── main.py         # App factory, FastAPI app, init_db on startup
 │   │   ├── api/
-│   │   │   ├── __init__.py  # Route registration (health, testcases)
+│   │   │   ├── __init__.py  # Route registration (health, testcases, projects, modules)
 │   │   │   ├── health.py    # GET /api/health
-│   │   │   └── testcases.py # All test case endpoints
+│   │   │   ├── testcases.py # AI generation, batch, export; save-to-project, modules testcases, execute, execute-batch, executions
+│   │   │   ├── projects.py  # CRUD projects
+│   │   │   └── modules.py   # CRUD modules (under project)
 │   │   ├── core/
-│   │   │   ├── config.py   # Settings (pydantic-settings), .env from project root
+│   │   │   ├── config.py   # Settings (pydantic-settings), database_url, .env from project root
 │   │   │   └── logging_config.py
+│   │   ├── database/
+│   │   │   ├── connection.py # Engine, SessionLocal, get_db, init_db
+│   │   │   └── models.py    # Project, Module, TestCase, TestExecution (SQLAlchemy ORM)
 │   │   ├── schemas/
-│   │   │   └── testcase.py  # Pydantic request/response models
+│   │   │   ├── testcase.py  # AI/batch request/response models
+│   │   │   └── project.py   # ProjectCreate/Response, ModuleCreate/Response, TestCaseSave, TestExecution*, BatchExecutionUpdate
 │   │   ├── services/
-│   │   │   └── testcase_service.py # Business logic, batch orchestration
-│   │   ├── providers/
-│   │   │   ├── base.py      # LLMProvider interface
-│   │   │   ├── factory.py   # get_provider(ollama|openai|gemini|groq)
-│   │   │   ├── ollama_provider.py
-│   │   │   ├── openai_provider.py
-│   │   │   ├── gemini_provider.py
-│   │   │   └── groq_provider.py
-│   │   └── utils/
-│   │       ├── prompt_builder.py
-│   │       ├── embeddings.py
-│   │       ├── token_allocation.py
-│   │       ├── csv_filename.py
-│   │       ├── excel_exporter.py
-│   │       └── excel_template_merge.py   # Merge test cases into .xlsx template
+│   │   │   └── testcase_service.py # AI generation, batch orchestration (in-memory)
+│   │   ├── providers/      # base, factory, ollama, openai, gemini, groq
+│   │   └── utils/          # prompt_builder, embeddings, token_allocation, csv_filename, excel_*
 │   ├── tests/
-│   │   └── test_health.py   # Health endpoint test
-│   ├── main.py              # Optional entrypoint (python main.py from backend/)
+│   ├── main.py
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── api/             # client.ts, types.ts
-│   │   ├── assets/icons/    # Provider icons (google, groq, local, openai)
+│   │   ├── api/             # client.ts (all backend calls), types.ts
 │   │   ├── components/      # GenerationForm, BatchResultsView, ResultsTable, TemplateUploadModal
-│   │   ├── hooks/           # useTemplateStorage (Excel template in localStorage)
-│   │   ├── constants/       # exportColumns
-│   │   └── index.css        # Tailwind imports
+│   │   │   ├── ProjectManagement/  # ProjectList, ProjectForm, ProjectDetail, ModuleTree, SaveToProjectModal, NewModuleModal (in ProjectDetail)
+│   │   │   ├── TestExecution/     # ExecutionTable, TestCaseDetailModal
+│   │   │   └── Dashboard/         # PersonalDashboard
+│   │   ├── hooks/           # useTemplateStorage
+│   │   └── index.css
 │   ├── vite.config.ts       # Proxy /api → backend
 │   └── package.json
-├── venv/                    # Python virtual environment (create via python -m venv venv)
-├── .env                     # Backend env vars (at root; backend loads via path)
-├── package.json             # Root: npm run dev (concurrently: backend via venv + frontend)
+├── venv/
+├── .env
+├── package.json             # Root: npm run dev (backend + frontend)
 └── DOCUMENTATION.md
 ```
 
@@ -202,13 +220,14 @@ ai_testcase_generator/
 
 | Directory | Responsibility |
 |-----------|----------------|
-| `backend/app/api/` | HTTP routing, error handling, thin handlers |
-| `backend/app/core/` | App config, logging |
-| `backend/app/schemas/` | Request/response models, validation |
-| `backend/app/services/` | Generation, batch, storage, dedup |
+| `backend/app/api/` | HTTP routing, error handling; health, testcases, projects, modules |
+| `backend/app/core/` | App config (including database_url), logging |
+| `backend/app/database/` | SQLite connection, ORM models, get_db dependency, init_db |
+| `backend/app/schemas/` | Pydantic request/response (testcase, project) |
+| `backend/app/services/` | AI generation, batch, in-memory store, dedup |
 | `backend/app/providers/` | LLM abstraction, provider implementations |
 | `backend/app/utils/` | Prompts, embeddings, tokens, filenames, Excel |
-| `frontend/` | React app, API client, UI components |
+| `frontend/` | React app, React Router, API client, Generator / Projects / Dashboard UI |
 
 ---
 
@@ -272,6 +291,7 @@ See **README.md** for the full first-time setup and run instructions.
 | `AI_TC_GEN_GROQ_API_KEY` | — | Required for Groq provider |
 | `AI_TC_GEN_GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model |
 | `AI_TC_GEN_LOG_LEVEL` | `INFO` | Logging level |
+| `AI_TC_GEN_DATABASE_URL` | `sqlite:///./testcases.db` | SQLAlchemy URL; SQLite file created in backend working directory |
 | `VITE_API_BASE_URL` | (empty) | Override API base in production; empty uses proxy |
 
 Use `.env` in the project root for backend variables (the backend loads it from the project root when run from `backend/`). Use `frontend/.env` for `VITE_*` variables.
@@ -316,12 +336,24 @@ curl -X POST http://localhost:8000/api/testcases/generate-test-cases \
 
 ### Batch Generation (UI)
 
-1. Open `http://localhost:5173`.
+1. Open `http://localhost:5173` (Generator tab `/`).
 2. Add one or more feature tabs (Name, Description, Allowed/Excluded, Coverage).
 3. Choose model from the dropdown (default: **Gemini 2.5 Flash**). Options: Gemini 2.5 Flash, Llama 3.3 70B (Groq), Llama 3.2 3B (Local), GPT-4o Mini, GPT-4o.
 4. Click **Generate Test Cases**.
-5. Polling shows per-feature status; expand features to view results.
-6. Export: **Export CSV** per feature; **Export All Features** for merged CSV; **Export to Excel Template** (per feature) or **Export All to Excel Template** (all features combined into one “Test Cases” sheet).
+5. Polling shows per-feature status; expand features to view results. **Generated results persist when you switch to Projects or Dashboard** (cleared only when you run a new generation).
+6. Export: **Export CSV** per feature; **Export All Features** for merged CSV; **Export to Excel Template** (per feature) or **Export All to Excel Template** (all features). Or **Save to Project** to bulk-save into a project/module.
+
+### Projects and modules
+
+1. Go to **Projects** (`/projects`). Create or edit projects (name, description).
+2. Open a project → **Project detail** (`/projects/:id`). Left sidebar: **module tree** (expand/collapse; click to select module). Click **+ New Module** to create a module (name + optional parent); tree refreshes after creation.
+3. Select a module → right side shows **Execution table** for all test cases in that module.
+
+### Test execution
+
+1. In the execution table: **Status** button cycles Not Executed → Passed → Failed → Blocked; **Actual Result** is an inline text field.
+2. Click **Save All Changes** to persist all status and actual-result updates in one request (`POST /api/testcases/modules/{module_id}/execute-batch`).
+3. **View** (eye icon) opens a modal with full test case details and execution history.
 
 ### Export Workflow
 
@@ -357,18 +389,18 @@ Base URL: `http://localhost:8000` (or configured host)
 |--------|------|-------------|
 | GET | `/api/health` | Liveness/readiness |
 
-### Test Cases
+### Test Cases (AI generation & in-memory)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/testcases/from-requirements` | Generate from requirements (non-LLM) |
 | POST | `/api/testcases/generate-test-cases` | Generate via LLM; optional `?generate_excel=true` |
 | GET | `/api/testcases` | List all (in-memory) |
-| GET | `/api/testcases/{id}` | Get by ID |
-| DELETE | `/api/testcases/{id}` | Delete; removed from batch and exports |
+| GET | `/api/testcases/{id}` | Get by ID (in-memory) |
+| DELETE | `/api/testcases/{id}` | Delete in-memory case (removed from batch and exports) |
 | GET | `/api/testcases/csv-filename` | `?feature_name=` for OS-safe filename |
-| POST | `/api/testcases/export-to-excel` | **Export to Excel template** (single feature). Multipart: `template` (.xlsx), `testCases` (JSON), `featureName`. Returns Excel with test cases in “Test Cases” sheet. |
-| POST | `/api/testcases/export-all-to-excel` | **Export all to Excel template**. Multipart: `template` (.xlsx), `testCasesByFeature` (JSON array of `{ featureName, testCases }`). Returns Excel with all features’ test cases combined in “Test Cases” sheet. |
+| POST | `/api/testcases/export-to-excel` | Export to Excel template (single feature). Multipart: `template`, `testCases`, `featureName`. |
+| POST | `/api/testcases/export-all-to-excel` | Export all to Excel template. Multipart: `template`, `testCasesByFeature`. |
 
 ### Batch
 
@@ -378,6 +410,42 @@ Base URL: `http://localhost:8000` (or configured host)
 | GET | `/api/testcases/batches/{batch_id}` | Batch status and per-feature results |
 | POST | `/api/testcases/batches/{batch_id}/features/{feature_id}/retry` | Retry failed feature |
 | GET | `/api/testcases/batches/{batch_id}/export-all` | Merged CSV download |
+
+### Projects
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/projects` | Create project |
+| GET | `/api/projects` | List all projects (with module counts) |
+| GET | `/api/projects/{id}` | Get project and module tree |
+| PUT | `/api/projects/{id}` | Update project |
+| DELETE | `/api/projects/{id}` | Delete project (cascade modules, test cases, executions) |
+
+### Modules
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/projects/{project_id}/modules` | Create module (body: name, optional parent_id) |
+| GET | `/api/projects/{project_id}/modules` | Module tree for project |
+| PUT | `/api/modules/{id}` | Update module |
+| DELETE | `/api/modules/{id}` | Delete module (cascade children and test cases) |
+
+### Persistent test cases & execution
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/testcases/save-to-project` | Bulk save generated test cases into a module (body: module_id, test_cases[]) |
+| GET | `/api/testcases/modules/{module_id}/testcases` | List test cases in module (with latest_execution) |
+| PUT | `/api/testcases/{id}/execute` | Record one execution (body: status, actual_result, notes) |
+| POST | `/api/testcases/modules/{module_id}/execute-batch` | Batch record executions (body: executions[{ test_case_id, status, actual_result, notes }]) |
+| GET | `/api/testcases/{id}/executions` | Execution history for a test case |
+| DELETE | `/api/testcases/db/{id}` | Delete persisted test case |
+
+### Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/dashboard` | (Optional) Aggregate stats: total cases, executed, pass rate, recent activity |
 
 ### Key Schemas
 
@@ -393,6 +461,10 @@ Base URL: `http://localhost:8000` (or configured host)
 - `provider` (optional; derived from `model_id` when set)
 - `model_id`: model identifier (optional; when set, provider is derived: gpt-4o-mini/gpt-4o→openai, gemini-2.5-flash→gemini, llama-3.3-70b-versatile→groq, llama3.2:3b→ollama)
 - `features`: list of `{feature_name, feature_description, coverage_level, ...}`
+
+**Persistent QA (see `app.schemas.project`)**  
+- `ProjectCreate` / `ProjectResponse`; `ModuleCreate` / `ModuleResponse` (tree with `children`, `test_cases_count`).  
+- `TestCaseSave` (module_id, test_cases[]); `TestExecutionUpdate` (status, actual_result, notes); `TestExecutionResponse`; `BatchExecutionUpdate` (executions: list of test_case_id, status, actual_result, notes).
 
 OpenAPI spec: `http://localhost:8000/docs`
 
@@ -425,20 +497,21 @@ If the venv is not activated, use the venv’s Python: `cd backend && ..\venv\Sc
 
 ## 9. Scalability Considerations
 
-### Current Limitations
+### Current State
 
-- **In-memory storage**: `_store` and `_batch_store` are process-local; no persistence across restarts.
-- **Single process**: No horizontal scaling; batches run in one process.
+- **Persistent storage (SQLite)**: Projects, modules, test cases, and test executions are stored in `testcases.db`; created on app startup via `init_db()`. Survives restarts.
+- **In-memory (generator only)**: AI batch state (`_batch_store`, `_store` for generated cases) is process-local; batch results are lost on restart. Use “Save to Project” to persist generated cases.
+- **Single process**: No horizontal scaling; batches and API run in one process.
 - **Embeddings**: OpenAI API calls add latency and cost; no local embedding option.
 - **Ollama**: No load balancing; single instance.
 
 ### Suggested Improvements
 
-- **Persistence**: PostgreSQL/SQLite for test cases and batch state.
-- **Task queue**: Celery/RQ for batch jobs; Redis for state.
+- **Batch persistence**: Optionally persist batch state or queue batch jobs (e.g. Celery/RQ, Redis).
 - **Caching**: Cache embeddings per scenario text; TTL-based invalidation.
 - **Rate limiting**: Protect LLM and embedding endpoints.
 - **Local embeddings**: Use sentence-transformers for on-prem, embedding-free dedup fallback.
+- **Database**: For higher load, switch `database_url` to PostgreSQL; schema is SQLAlchemy ORM.
 
 ---
 

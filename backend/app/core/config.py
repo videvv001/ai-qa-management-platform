@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     """
 
     # Core app settings
-    app_name: str = Field(default="ai_testcase_generator")
+    app_name: str = Field(default="qaplat")
     environment: str = Field(default="development")  # development | staging | production
     debug: bool = Field(default=False)
 
@@ -78,6 +78,12 @@ class Settings(BaseSettings):
 
     # Security (placeholder for future auth)
     api_key_header_name: Optional[str] = Field(default=None)
+
+    # Database
+    database_url: str = Field(
+        default="sqlite:///./testcases.db",
+        description="SQLAlchemy database URL for persistence (defaults to local SQLite).",
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="AI_TC_GEN_",

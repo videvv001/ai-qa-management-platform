@@ -1,6 +1,11 @@
-# AI Test Case Generator
+# QA Platform (AI Test Case Generator + Personal QA)
 
-Internal service for generating high-quality test cases from requirements and feature descriptions using LLMs (Ollama, OpenAI, Gemini, or Groq). Includes a React UI for batch generation, per-feature and merged CSV export, **Excel template export** (single feature or all features combined), and test case deletion.
+Personal QA platform for generating, saving, organizing, and executing high-quality test cases using LLMs (Ollama, OpenAI, Gemini, or Groq). Includes:
+
+- **AI generator** for batch test case generation.
+- **SQLite-backed projects/modules** for persistent storage of test cases.
+- **Execution table** UI for table-style execution (status + actual result).
+- **Dashboard** with basic personal QA stats and recent activity.
 
 ## Prerequisites
 
@@ -14,12 +19,13 @@ Internal service for generating high-quality test cases from requirements and fe
 ## Project layout
 
 ```text
-ai_testcase_generator/
+qaplat/
 ├── backend/                # Python FastAPI app (run from here)
 │   ├── app/                # Application package
 │   │   ├── main.py         # FastAPI app (uvicorn app.main:app)
-│   │   ├── api/            # Health + test case endpoints
+│   │   ├── api/            # Health + test case + project/module endpoints
 │   │   ├── core/           # Config, logging
+│   │   ├── database/       # SQLAlchemy connection + models
 │   │   ├── providers/      # LLM providers (Ollama, OpenAI, Gemini, Groq)
 │   │   ├── schemas/        # Pydantic request/response models
 │   │   ├── services/       # Business logic (generation, batch, dedup)
@@ -27,7 +33,14 @@ ai_testcase_generator/
 │   ├── tests/
 │   ├── main.py             # Optional entrypoint (python main.py)
 │   └── requirements.txt
-├── frontend/               # React + Vite UI (BatchResultsView, TemplateUploadModal, useTemplateStorage)
+├── frontend/               # React + Vite UI
+│   └── src/
+│       ├── components/
+│       │   ├── GenerationForm, BatchResultsView            # AI generator
+│       │   ├── ProjectManagement/*                         # Projects, modules, Save-to-Project
+│       │   ├── TestExecution/*                             # Execution table + detail modal
+│       │   └── Dashboard/PersonalDashboard                 # Personal stats view
+│       └── api/client.ts                                   # Single API client for backend
 ├── package.json            # Root: npm run dev (backend + frontend)
 ├── .env                    # Backend env vars (at root; backend loads via path)
 └── DOCUMENTATION.md        # Full production documentation
@@ -35,7 +48,7 @@ ai_testcase_generator/
 
 ## First-time setup
 
-Run these steps once after cloning or moving the project. All commands are from the **project root** (e.g. `F:\project\tool\ai_testcase_generator` or `ai_testcase_generator/`).
+Run these steps once after cloning or moving the project. All commands are from the **project root** (e.g. `F:\project\tool\newaitool\qaplat` or `qaplat/`).
 
 ### 1. Python virtual environment and backend dependencies
 
@@ -150,12 +163,28 @@ This starts:
 
 Open `http://localhost:5173` in your browser.
 
-**Export options (batch results):**
+### Main UI routes
 
-- **Export CSV** — Per-feature CSV download.
-- **Export All Features** — Merged CSV of all features (deduplicated).
-- **Export to Excel Template** — Per-feature: upload an `.xlsx` template; test cases are merged into the template’s “Test Cases” sheet (Summary sheet unchanged). Optional “Remember this template” stores it in the browser for next time.
-- **Export All to Excel Template** — Same template upload; all features’ test cases are combined into the single “Test Cases” sheet (Feature1’s cases first, then Feature2’s, etc.). Column A = sequential No. (1, 2, …); Column B = Test ID per feature (e.g. `TC_FEAT1_001`, `TC_FEAT2_001`). The downloaded filename includes the UTC date and time (e.g. `All_Features_Test_Cases_2026-02-11_1432.xlsx`) for easier versioning.
+- `/` — **AI Generator**  
+  Configure features and generate test cases in batch. Generated results persist when you switch to Projects or Dashboard (they clear only when you run a new generation). From the batch results you can:
+  - Export per-feature CSV.
+  - Export merged CSV of all features.
+  - Export to Excel template (per feature or all features).
+  - **Save to Project** – bulk-save generated test cases into a selected project/module.
+
+- `/projects` — **Projects list**  
+  Create and edit projects (name, description) and open a project detail view.
+
+- `/projects/:id` — **Project detail**  
+  - Left: module tree (hierarchical folders) with per-module test case counts; **+ New Module** opens a modal to create a module (name + optional parent).
+  - Right: execution table for all test cases in the selected module:
+    - Status button cycles through **Not Executed → Passed → Failed → Blocked → Not Executed**.
+    - Inline **Actual Result** text field.
+    - **Save All Changes** persists all status and actual-result updates in one API call.
+    - **View** opens a detail modal with full test case fields and execution history.
+
+- `/dashboard` — **Personal dashboard**  
+  High-level QA stats (total cases, executed, pass rate, pending) and recent execution activity.
 
 ### Run backend only
 
@@ -201,21 +230,47 @@ cd backend && python -m pytest tests/ -v
 | `AI_TC_GEN_GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model name |
 | `AI_TC_GEN_GROQ_API_KEY` | — | Required for Groq provider (Llama 3.3 70B). Set in `.env`. |
 | `AI_TC_GEN_GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model name |
+| `AI_TC_GEN_DATABASE_URL` | `sqlite:///./testcases.db` | SQLAlchemy URL for persistent storage (projects, modules, test cases, executions) |
 | `VITE_API_BASE_URL` | (empty) | API base URL in production; empty uses dev proxy |
 
-Use `.env` in the project root for backend variables (the backend loads it from the project root when run from `backend/`). Use `frontend/.env` for `VITE_*` variables.
+Use `.env` in the project root for backend variables (the backend loads it from the project root when run from `backend/`). Use `frontend/.env` for `VITE_*` variables. The SQLite file is created in the backend working directory when the app starts.
 
 ## Key API endpoints
 
 - `GET /api/health` — health check
+
+**AI generation & export**
+
 - `POST /api/testcases/generate-test-cases` — single-feature generation. Body: `feature_name`, `feature_description`, `coverage_level` (low|medium|high|comprehensive). Optional `?generate_excel=true`.
-- `POST /api/testcases/batch-generate` — start batch; returns `batch_id`
-- `GET /api/testcases/batches/{batch_id}` — batch status and per-feature results
-- `POST /api/testcases/batches/{batch_id}/features/{feature_id}/retry` — retry failed feature
-- `GET /api/testcases/batches/{batch_id}/export-all` — download merged CSV
-- `POST /api/testcases/export-to-excel` — **Export to Excel template** (single feature). Multipart: `template` (.xlsx), `testCases` (JSON), `featureName`. Returns Excel with test cases merged into the template’s “Test Cases” sheet.
-- `POST /api/testcases/export-all-to-excel` — **Export all features to Excel template**. Multipart: `template` (.xlsx), `testCasesByFeature` (JSON array of `{ featureName, testCases }`). Returns one Excel file with all features’ test cases combined in the template’s “Test Cases” sheet (Summary sheet unchanged).
-- `DELETE /api/testcases/{id}` — delete test case (excluded from exports)
-- `GET /api/testcases/csv-filename?feature_name=` — OS-safe filename for per-feature export
+- `POST /api/testcases/batch-generate` — start batch; returns `batch_id`.
+- `GET /api/testcases/batches/{batch_id}` — batch status and per-feature results.
+- `POST /api/testcases/batches/{batch_id}/features/{feature_id}/retry` — retry failed feature.
+- `GET /api/testcases/batches/{batch_id}/export-all` — download merged CSV.
+- `POST /api/testcases/export-to-excel` — **Export to Excel template** (single feature). Multipart: `template` (.xlsx), `testCases` (JSON), `featureName`.
+- `POST /api/testcases/export-all-to-excel` — **Export all features to Excel template**. Multipart: `template` (.xlsx), `testCasesByFeature` (JSON array of `{ featureName, testCases }`).
+- `DELETE /api/testcases/{id}` — delete in-memory test case (excluded from exports).
+- `GET /api/testcases/csv-filename?feature_name=` — OS-safe filename for per-feature export.
+
+**Persistent QA platform**
+
+- `POST /api/projects` — create project.
+- `GET /api/projects` — list all projects with module counts.
+- `GET /api/projects/{id}` — project + module tree.
+- `PUT /api/projects/{id}` — update project.
+- `DELETE /api/projects/{id}` — delete project (cascade modules + test cases + executions).
+
+- `POST /api/projects/{project_id}/modules` — create module under project.
+- `GET /api/projects/{project_id}/modules` — module tree for project.
+- `PUT /api/modules/{id}` — update module.
+- `DELETE /api/modules/{id}` — delete module (cascade submodules + test cases + executions).
+
+- `POST /api/testcases/save-to-project` — bulk save generated test cases into a module.
+- `GET /api/testcases/modules/{module_id}/testcases` — list all test cases in a module (with latest execution).
+- `PUT /api/testcases/{id}/execute` — record execution for a single test case.
+- `POST /api/testcases/modules/{module_id}/execute-batch` — batch record executions for many test cases in a module.
+- `GET /api/testcases/{id}/executions` — execution history for a test case.
+- `DELETE /api/testcases/db/{id}` — delete persisted test case.
+
+- `GET /api/dashboard` — (optional) aggregate stats for dashboard (total cases, executed, pass rate, recent activity).
 
 See `DOCUMENTATION.md` for full API reference, Excel template structure, and architecture details.

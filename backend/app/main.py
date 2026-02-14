@@ -1,12 +1,14 @@
 """
-Single entrypoint for the AI Testcase Generator service.
+Single entrypoint for the QA platform backend.
 
 Run from backend directory: uvicorn app.main:app --reload
 """
 from fastapi import FastAPI
 
+from app.core.config import get_settings
 from app.core.logging_config import configure_logging
 from app.api import register_routes
+from app.database.connection import init_db
 
 
 def create_app() -> FastAPI:
@@ -15,17 +17,22 @@ def create_app() -> FastAPI:
     """
     configure_logging()
 
+    settings = get_settings()
+
     app = FastAPI(
-        title="AI Testcase Generator",
+        title=settings.app_name,
         description=(
-            "Internal backend service for generating test cases from "
-            "requirements and specifications. Prepared for integration with "
-            "local Ollama and OpenAI."
+            "Backend service for AI-assisted test case generation and "
+            "personal QA management with persistent test projects."
         ),
         version="0.1.0",
     )
 
     register_routes(app)
+
+    @app.on_event("startup")
+    async def _on_startup() -> None:  # pragma: no cover - side-effect wiring
+        init_db()
 
     return app
 
@@ -35,6 +42,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",

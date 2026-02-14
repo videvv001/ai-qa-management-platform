@@ -278,3 +278,117 @@ def merge_all_features_to_excel(
     tmp.close()
     wb.save(str(out_path))
     return str(out_path)
+
+
+# --- Module-based export with auto-detection ---
+
+# Header (row 2) text patterns -> field key for column mapping
+# Order matters for matching: more specific first
+_HEADER_PATTERNS: List[Tuple[List[str], str]] = [
+    (["no", "no."], "no"),
+    (["test id"], "test_id"),
+    (["test scenario", "scenario"], "scenario"),
+    (["test description", "description"], "description"),
+    (["pre-condition", "precondition"], "preconditions"),
+    (["test data", "data"], "test_data"),
+    (["step", "test step"], "steps"),
+    (["expected result", "expected"], "expected_result"),
+    (["actual result", "actual"], "actual_result"),
+    (["status"], "status"),
+    (["comment", "notes"], "notes"),
+]
+
+
+def _detect_column_mapping(ws: Worksheet, header_row: int = 2) -> dict[int, str]:
+    """
+    Scan header_row for column headers (case-insensitive) and return
+    col_idx -> field_key mapping. Field keys: no, test_id, scenario, etc.
+    """
+    mapping: dict[int, str] = {}
+    max_col = min(ws.max_column, 50)  # reasonable limit
+    for col in range(1, max_col + 1):
+        cell = ws.cell(row=header_row, column=col)
+        val = (cell.value or "").strip()
+        if not val:
+            continue
+        val_lower = val.lower()
+        for patterns, field_key in _HEADER_PATTERNS:
+            if val_lower in patterns:
+                mapping[col] = field_key
+                break
+    return mapping
+
+
+def merge_module_cases_to_excel_template(
+    template_path: str | Path,
+    test_cases: List[Mapping[str, Any]],
+    module_name: str,
+) -> str:
+    """
+    Merge module test cases into an uploaded Excel template with auto-detected columns.
+    - Finds "Test Cases" sheet or uses first sheet.
+    - Row 2 = headers; auto-detect column mapping (case-insensitive).
+    - Delete existing data rows (keep rows 1-2).
+    - Write test cases from row 3 with formatting from original row 3.
+    - Preserve all other sheets unchanged.
+    Returns path to saved temporary .xlsx file.
+    """
+    path = Path(template_path)
+    if not path.exists() or path.stat().st_size > MAX_TEMPLATE_SIZE_BYTES:
+        raise ValueError("Template file missing or exceeds size limit")
+
+    wb = load_workbook(path, read_only=False)
+    if SHEET_NAME in wb.sheetnames:
+        ws = wb[SHEET_NAME]
+    else:
+        ws = wb.active
+        if ws is None:
+            raise ValueError("Template has no sheets")
+
+    header_end_row = 2
+    data_start_row = 3
+    col_map = _detect_column_mapping(ws, header_row=header_end_row)
+    if not col_map:
+        raise ValueError(
+            "Could not detect column headers in row 2. "
+            "Expected headers like: No, Test ID, Test Scenario, Expected Result, etc."
+        )
+    template_styles = _get_style_dict(ws, data_start_row) if ws.max_row >= data_start_row else {}
+
+    if ws.max_row >= data_start_row:
+        ws.delete_rows(data_start_row, ws.max_row - header_end_row)
+
+    for idx, tc in enumerate(test_cases, 1):
+        row = data_start_row + idx - 1
+        latest = tc.get("latest_execution") or {}
+        steps_raw = tc.get("steps") or []
+        steps_str = format_test_steps(steps_raw) if isinstance(steps_raw, list) else format_test_steps(steps_raw)
+
+        values: dict[str, Any] = {
+            "no": idx,
+            "test_id": str(tc.get("test_id") or ""),
+            "scenario": str(tc.get("scenario") or ""),
+            "description": str(tc.get("description") or ""),
+            "preconditions": str(tc.get("preconditions") or ""),
+            "test_data": str(tc.get("test_data") or ""),
+            "steps": steps_str,
+            "expected_result": str(tc.get("expected_result") or ""),
+            "actual_result": str(latest.get("actual_result") or ""),
+            "status": str(latest.get("status") or "Not Executed"),
+            "notes": str(latest.get("notes") or ""),
+        }
+
+        for col, field_key in col_map.items():
+            cell = ws.cell(row=row, column=col)
+            cell.value = values.get(field_key, "")
+            _apply_style(cell, template_styles.get(col, {}))
+
+    tmp = tempfile.NamedTemporaryFile(
+        prefix="module_export_",
+        suffix=".xlsx",
+        delete=False,
+    )
+    out_path = Path(tmp.name)
+    tmp.close()
+    wb.save(str(out_path))
+    return str(out_path)

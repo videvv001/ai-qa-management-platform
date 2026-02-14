@@ -21,8 +21,11 @@ import {
   getBatchExportAllUrl,
   getCsvFilename,
   itemToExportPayload,
+  saveTestCasesToProject,
+  type TestCaseSaveItem,
 } from "@/api/client";
 import type { ExportAllFeaturePayload } from "@/api/client";
+import { SaveToProjectModal } from "@/components/ProjectManagement/SaveToProjectModal";
 import {
   clearStoredTemplate,
   fileToBase64,
@@ -62,8 +65,10 @@ export function BatchResultsView({
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [excelModalFeature, setExcelModalFeature] = useState<BatchFeatureResult | null>(null);
   const [excelModalExportAll, setExcelModalExportAll] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
   const [excelExporting, setExcelExporting] = useState(false);
   const [excelStoredTemplate, setExcelStoredTemplate] = useState<ReturnType<typeof getStoredTemplate>>(null);
+  const [savingFeature, setSavingFeature] = useState<BatchFeatureResult | null>(null);
 
   const toggle = useCallback((featureId: string) => {
     setExpandedIds((prev) => {
@@ -80,6 +85,28 @@ export function BatchResultsView({
     const filename = await getCsvFilename(fr.feature_name);
     exportToCsv(items, filename);
   }, []);
+
+  const handleSaveToProject = useCallback(
+    async (moduleId: number, feature: BatchFeatureResult) => {
+      const items = (feature.items ?? []) as TestCaseItem[];
+      if (items.length === 0) return;
+      const payload: TestCaseSaveItem[] = items.map((tc, idx) => ({
+        test_id: `TC_${feature.feature_name.replace(/\s+/g, "_").toUpperCase()}_${String(
+          idx + 1
+        ).padStart(3, "0")}`,
+        scenario: tc.test_scenario,
+        description: tc.test_description,
+        preconditions: tc.pre_condition,
+        steps: tc.test_steps,
+        expected_result: tc.expected_result,
+        test_data: tc.test_data ?? undefined,
+        priority: undefined,
+        tags: undefined,
+      }));
+      await saveTestCasesToProject(moduleId, payload);
+    },
+    []
+  );
 
   const handleExportAll = useCallback(() => {
     const url = getBatchExportAllUrl(batch.batch_id);
@@ -238,6 +265,14 @@ export function BatchResultsView({
                         <FileSpreadsheet className="h-4 w-4" />
                         Export to Excel Template
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSavingFeature(fr)}
+                        className="h-8"
+                      >
+                        Save to Project
+                      </Button>
                     </>
                   )}
                   {fr.status === "failed" && (
@@ -314,6 +349,25 @@ export function BatchResultsView({
             ? `This will create one Excel file with ${batch.features.filter((f) => (f.items?.length ?? 0) > 0).length} sheet${batch.features.filter((f) => (f.items?.length ?? 0) > 0).length === 1 ? "" : "s"} (one per feature).`
             : undefined
         }
+      />
+
+      {saveToast && (
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 shadow-lg dark:border-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+          {saveToast}
+        </div>
+      )}
+      <SaveToProjectModal
+        open={savingFeature !== null}
+        feature={savingFeature}
+        onClose={() => setSavingFeature(null)}
+        onSave={async (moduleId, feature) => {
+          await handleSaveToProject(moduleId, feature);
+          setSavingFeature(null);
+        }}
+        onSuccess={(msg) => {
+          setSaveToast(msg);
+          setTimeout(() => setSaveToast(null), 4000);
+        }}
       />
     </div>
   );

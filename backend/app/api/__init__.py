@@ -2,7 +2,7 @@ from fastapi import APIRouter, FastAPI
 
 from app.core.config import get_settings
 
-from . import health, testcases
+from . import health, testcases, projects, modules, dashboard
 
 
 def get_api_router() -> APIRouter:
@@ -21,6 +21,24 @@ def get_api_router() -> APIRouter:
         testcases.router,
         prefix="/testcases",
         tags=["testcases"],
+    )
+
+    root_router.include_router(
+        projects.router,
+        prefix="/projects",
+        tags=["projects"],
+    )
+
+    root_router.include_router(
+        modules.router,
+        prefix="",
+        tags=["modules"],
+    )
+
+    root_router.include_router(
+        dashboard.router,
+        prefix="/dashboard",
+        tags=["dashboard"],
     )
 
     return root_router

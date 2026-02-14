@@ -1,15 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { Link, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Sun,
   Moon,
-  PanelLeftClose,
-  PanelLeft,
   Maximize2,
   Minimize2,
 } from "lucide-react";
 import { GenerationForm, type BatchFormValues, type SingleFeatureValues } from "@/components/GenerationForm";
 import { ResultsTableSkeleton } from "@/components/ResultsTableSkeleton";
 import { BatchResultsView } from "@/components/BatchResultsView";
+import { ProjectList } from "@/components/ProjectManagement/ProjectList";
+import { ProjectDetail } from "@/components/ProjectManagement/ProjectDetail";
+import { PersonalDashboard } from "@/components/Dashboard/PersonalDashboard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { batchGenerate, getBatchStatus, retryBatchFeature } from "@/api/client";
@@ -60,21 +62,10 @@ function buildFeatureDescription(f: SingleFeatureValues): string {
   return text;
 }
 
-export default function App() {
-  const [batchId, setBatchId] = useState<string | null>(null);
-  const [batch, setBatch] = useState<BatchStatusResponse | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastValues, setLastValues] = useState<BatchFormValues | null>(null);
+function Shell({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
-  const [panelCollapsed, setPanelCollapsed] = useState(getStoredPanelCollapsed);
-  const [resultsFullscreen, setResultsFullscreen] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const isGenerating =
-    isSubmitting ||
-    (batch !== null &&
-      (batch.status === "pending" || batch.status === "running"));
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -85,43 +76,153 @@ export default function App() {
     } catch {}
   }, [theme]);
 
+  const isActive = (path: string) => location.pathname === path;
+
+  return (
+    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
+      <header className="border-b border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800 shrink-0">
+        <div className="flex items-center justify-between gap-4 max-w-[1800px] mx-auto">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="min-w-0 text-left"
+            >
+              <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">
+                QA Platform
+              </h1>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                AI test generation and personal test management.
+              </p>
+            </button>
+          </div>
+          <nav className="flex items-center gap-2 text-xs">
+            <Link
+              to="/"
+              className={`px-3 py-1.5 rounded-full border ${
+                isActive("/") ? "bg-neutral-900 text-white border-neutral-900 dark:bg-neutral-50 dark:text-neutral-900" : "border-transparent text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+              }`}
+            >
+              Generator
+            </Link>
+            <Link
+              to="/projects"
+              className={`px-3 py-1.5 rounded-full border ${
+                isActive("/projects") ? "bg-neutral-900 text-white border-neutral-900 dark:bg-neutral-50 dark:text-neutral-900" : "border-transparent text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+              }`}
+            >
+              Projects
+            </Link>
+            <Link
+              to="/dashboard"
+              className={`px-3 py-1.5 rounded-full border ${
+                isActive("/dashboard") ? "bg-neutral-900 text-white border-neutral-900 dark:bg-neutral-50 dark:text-neutral-900" : "border-transparent text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+              }`}
+            >
+              Dashboard
+            </Link>
+          </nav>
+          <button
+            type="button"
+            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+            title={
+              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+            }
+            className="shrink-0 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+          >
+            {theme === "light" ? (
+              <Moon className="h-5 w-5" />
+            ) : (
+              <Sun className="h-5 w-5" />
+            )}
+          </button>
+        </div>
+      </header>
+      {children}
+    </div>
+  );
+}
+
+interface GeneratorPageProps {
+  batchId: string | null;
+  batch: BatchStatusResponse | null;
+  isSubmitting: boolean;
+  error: string | null;
+  lastValues: BatchFormValues | null;
+  panelCollapsed: boolean;
+  resultsFullscreen: boolean;
+  setBatchId: (id: string | null) => void;
+  setBatch: (batch: BatchStatusResponse | null) => void;
+  setIsSubmitting: (v: boolean) => void;
+  setError: (msg: string | null) => void;
+  setLastValues: (v: BatchFormValues | null) => void;
+  setPanelCollapsed: (v: boolean | ((prev: boolean) => boolean)) => void;
+  setResultsFullscreen: (v: boolean | ((prev: boolean) => boolean)) => void;
+}
+
+function GeneratorPage({
+  batchId,
+  batch,
+  isSubmitting,
+  error,
+  lastValues,
+  panelCollapsed,
+  resultsFullscreen,
+  setBatchId,
+  setBatch,
+  setIsSubmitting,
+  setError,
+  setLastValues,
+  setPanelCollapsed: _setPanelCollapsed,
+  setResultsFullscreen,
+}: GeneratorPageProps) {
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isGenerating =
+    isSubmitting ||
+    (batch !== null &&
+      (batch.status === "pending" || batch.status === "running"));
+
   useEffect(() => {
     try {
       localStorage.setItem(PANEL_KEY, String(panelCollapsed));
     } catch {}
   }, [panelCollapsed]);
 
-  const runGeneration = useCallback(async (values: BatchFormValues) => {
-    setError(null);
-    setLastValues(values);
-    setIsSubmitting(true);
-    setBatch(null);
-    setBatchId(null);
-    try {
-      const features = values.features.map((f) => ({
-        feature_name: f.featureName.trim(),
-        feature_description: buildFeatureDescription(f),
-        allowed_actions: f.allowedActions.trim() || undefined,
-        excluded_features: f.excludedFeatures.trim() || undefined,
-        coverage_level: f.coverageLevel,
-      }));
-      const res = await batchGenerate({
-        model_id: values.modelId,
-        features,
-      });
-      setBatchId(res.batch_id);
-      const initial = await getBatchStatus(res.batch_id);
-      setBatch(initial);
-    } catch (e) {
-      const message =
-        e instanceof Error
-          ? e.message
-          : "Something went wrong. Please try again.";
-      setError(message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, []);
+  const runGeneration = useCallback(
+    async (values: BatchFormValues) => {
+      setError(null);
+      setLastValues(values);
+      setIsSubmitting(true);
+      setBatch(null);
+      setBatchId(null);
+      try {
+        const features = values.features.map((f) => ({
+          feature_name: f.featureName.trim(),
+          feature_description: buildFeatureDescription(f),
+          allowed_actions: f.allowedActions.trim() || undefined,
+          excluded_features: f.excludedFeatures.trim() || undefined,
+          coverage_level: f.coverageLevel,
+        }));
+        const res = await batchGenerate({
+          model_id: values.modelId,
+          features,
+        });
+        setBatchId(res.batch_id);
+        const initial = await getBatchStatus(res.batch_id);
+        setBatch(initial);
+      } catch (e) {
+        const message =
+          e instanceof Error
+            ? e.message
+            : "Something went wrong. Please try again.";
+        setError(message);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [setBatch, setBatchId, setError, setIsSubmitting, setLastValues]
+  );
 
   useEffect(() => {
     if (!batchId || !batch) return;
@@ -170,59 +271,7 @@ export default function App() {
   }, [batchId]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
-      <header className="border-b border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800 shrink-0">
-        <div className="flex items-center justify-between gap-4 max-w-[1800px] mx-auto">
-          <div className="flex items-center gap-3 min-w-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setPanelCollapsed((c) => !c)}
-              title={
-                panelCollapsed
-                  ? "Expand configuration"
-                  : "Collapse configuration"
-              }
-              className="shrink-0 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
-            >
-              {panelCollapsed ? (
-                <PanelLeft className="h-5 w-5" />
-              ) : (
-                <PanelLeftClose className="h-5 w-5" />
-              )}
-            </Button>
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">
-                AI Test Case Generator
-              </h1>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                Configure parameters and generate test cases.
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() =>
-              setTheme((t) => (t === "light" ? "dark" : "light"))
-            }
-            title={
-              theme === "light"
-                ? "Switch to dark mode"
-                : "Switch to light mode"
-            }
-            className="shrink-0 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
-          >
-            {theme === "light" ? (
-              <Moon className="h-5 w-5" />
-            ) : (
-              <Sun className="h-5 w-5" />
-            )}
-          </Button>
-        </div>
-      </header>
-
-      <main className="flex-1 flex min-h-0">
+    <main className="flex-1 flex min-h-0">
         <aside
           className={`
             shrink-0 overflow-hidden border-r border-neutral-200 dark:border-neutral-700
@@ -328,6 +377,51 @@ export default function App() {
           </div>
         </section>
       </main>
-    </div>
+  );
+}
+
+function ProjectDetailPage() {
+  const { id } = useParams();
+  return <ProjectDetail projectId={Number(id)} />;
+}
+
+export default function App() {
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [batch, setBatch] = useState<BatchStatusResponse | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastValues, setLastValues] = useState<BatchFormValues | null>(null);
+  const [panelCollapsed, setPanelCollapsed] = useState(getStoredPanelCollapsed);
+  const [resultsFullscreen, setResultsFullscreen] = useState(false);
+
+  return (
+    <Shell>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <GeneratorPage
+              batchId={batchId}
+              batch={batch}
+              isSubmitting={isSubmitting}
+              error={error}
+              lastValues={lastValues}
+              panelCollapsed={panelCollapsed}
+              resultsFullscreen={resultsFullscreen}
+              setBatchId={setBatchId}
+              setBatch={setBatch}
+              setIsSubmitting={setIsSubmitting}
+              setError={setError}
+              setLastValues={setLastValues}
+              setPanelCollapsed={setPanelCollapsed}
+              setResultsFullscreen={setResultsFullscreen}
+            />
+          }
+        />
+        <Route path="/projects" element={<ProjectList />} />
+        <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        <Route path="/dashboard" element={<PersonalDashboard />} />
+      </Routes>
+    </Shell>
   );
 }
