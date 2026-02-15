@@ -3,6 +3,7 @@
  * All backend calls go through this module; no fetch in components.
  */
 
+import { clearToken, getToken } from "./auth";
 import type {
   BatchGenerateRequest,
   BatchGenerateResponse,
@@ -39,6 +40,19 @@ const getBaseUrl = (): string => {
   return ""; // use relative URLs when proxying (e.g. /api)
 };
 
+/** Fetch with auth token. On 401, clears token and dispatches event for redirect to login. */
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const token = getToken();
+  const headers = new Headers(init?.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(url, { ...init, headers });
+  if (res.status === 401) {
+    clearToken();
+    window.dispatchEvent(new CustomEvent("qamp-auth-required"));
+  }
+  return res;
+}
+
 async function handleError(res: Response): Promise<never> {
   const body = await res.text();
   let message = `Request failed (${res.status})`;
@@ -57,7 +71,7 @@ export async function generateTestCases(
 ): Promise<TestCaseListResponse> {
   const base = getBaseUrl();
   const url = `${base}/api/testcases/generate-test-cases`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -74,7 +88,7 @@ export async function batchGenerate(
 ): Promise<BatchGenerateResponse> {
   const base = getBaseUrl();
   const url = `${base}/api/testcases/batch-generate`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -88,7 +102,7 @@ export async function getBatchStatus(
 ): Promise<BatchStatusResponse> {
   const base = getBaseUrl();
   const url = `${base}/api/testcases/batches/${encodeURIComponent(batchId)}`;
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   if (!res.ok) await handleError(res);
   return res.json();
 }
@@ -101,7 +115,7 @@ export async function retryBatchFeature(
   const base = getBaseUrl();
   const q = provider ? `?provider=${encodeURIComponent(provider)}` : "";
   const url = `${base}/api/testcases/batches/${encodeURIComponent(batchId)}/features/${encodeURIComponent(featureId)}/retry${q}`;
-  const res = await fetch(url, { method: "POST" });
+  const res = await apiFetch(url, { method: "POST" });
   if (!res.ok) await handleError(res);
 }
 
@@ -109,7 +123,7 @@ export async function retryBatchFeature(
 export async function deleteTestCase(testCaseId: string): Promise<void> {
   const base = getBaseUrl();
   const url = `${base}/api/testcases/${encodeURIComponent(testCaseId)}`;
-  const res = await fetch(url, { method: "DELETE" });
+  const res = await apiFetch(url, { method: "DELETE" });
   if (!res.ok) await handleError(res);
 }
 
@@ -124,7 +138,7 @@ export async function getCsvFilename(featureName?: string): Promise<string> {
   const base = getBaseUrl();
   const q = featureName != null && featureName !== "" ? `?feature_name=${encodeURIComponent(featureName)}` : "";
   const url = `${base}/api/testcases/csv-filename${q}`;
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   if (!res.ok) await handleError(res);
   const json = (await res.json()) as { filename: string };
   return json.filename ?? "tc_export.csv";
@@ -146,7 +160,7 @@ export async function exportToExcelTemplate(
   form.append("testCases", JSON.stringify(testCases.map(itemToExportPayload)));
   form.append("featureName", featureName);
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     body: form,
   });
@@ -185,7 +199,7 @@ export async function exportAllToExcelTemplate(
   form.append("template", templateFile);
   form.append("testCasesByFeature", JSON.stringify(featuresData));
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     body: form,
   });
@@ -326,7 +340,7 @@ export interface DashboardData {
 
 export async function createProject(payload: ProjectCreate): Promise<ProjectResponse> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/projects`, {
+  const res = await apiFetch(`${base}/api/projects`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -337,7 +351,7 @@ export async function createProject(payload: ProjectCreate): Promise<ProjectResp
 
 export async function getProjects(): Promise<ProjectResponse[]> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/projects`);
+  const res = await apiFetch(`${base}/api/projects`);
   if (!res.ok) await handleError(res);
   return res.json();
 }
@@ -346,7 +360,7 @@ export async function getProject(
   id: number
 ): Promise<{ project: ProjectResponse; modules: ModuleResponse[] }> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/projects/${id}`);
+  const res = await apiFetch(`${base}/api/projects/${id}`);
   if (!res.ok) await handleError(res);
   return res.json();
 }
@@ -356,7 +370,7 @@ export async function updateProject(
   payload: ProjectCreate
 ): Promise<ProjectResponse> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/projects/${id}`, {
+  const res = await apiFetch(`${base}/api/projects/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -367,7 +381,7 @@ export async function updateProject(
 
 export async function deleteProject(id: number): Promise<void> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/projects/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`${base}/api/projects/${id}`, { method: "DELETE" });
   if (!res.ok) await handleError(res);
 }
 
@@ -376,7 +390,7 @@ export async function createModule(
   payload: { name: string; parent_id?: number | null }
 ): Promise<ModuleResponse> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/projects/${projectId}/modules`, {
+  const res = await apiFetch(`${base}/api/projects/${projectId}/modules`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -387,7 +401,7 @@ export async function createModule(
 
 export async function getModules(projectId: number): Promise<ModuleResponse[]> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/projects/${projectId}/modules`);
+  const res = await apiFetch(`${base}/api/projects/${projectId}/modules`);
   if (!res.ok) await handleError(res);
   return res.json();
 }
@@ -397,7 +411,7 @@ export async function updateModule(
   payload: { name: string; parent_id?: number | null }
 ): Promise<ModuleResponse> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/modules/${moduleId}`, {
+  const res = await apiFetch(`${base}/api/modules/${moduleId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -411,7 +425,7 @@ export async function updateModuleStatus(
   status: string
 ): Promise<{ id: number; status: string }> {
   const base = getBaseUrl();
-  const res = await fetch(
+  const res = await apiFetch(
     `${base}/api/modules/${moduleId}/status?status=${encodeURIComponent(status)}`,
     { method: "PUT" }
   );
@@ -421,7 +435,7 @@ export async function updateModuleStatus(
 
 export async function deleteModule(moduleId: number): Promise<void> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/modules/${moduleId}`, { method: "DELETE" });
+  const res = await apiFetch(`${base}/api/modules/${moduleId}`, { method: "DELETE" });
   if (!res.ok) await handleError(res);
 }
 
@@ -445,7 +459,7 @@ export async function importFromFile(
   for (const f of files) {
     form.append("files", f);
   }
-  const res = await fetch(`${base}/api/testcases/import-from-file`, {
+  const res = await apiFetch(`${base}/api/testcases/import-from-file`, {
     method: "POST",
     body: form,
   });
@@ -477,7 +491,7 @@ export async function importPreview(
   if (headerRow != null) {
     form.append("header_row", String(headerRow));
   }
-  const res = await fetch(`${base}/api/testcases/import-preview`, {
+  const res = await apiFetch(`${base}/api/testcases/import-preview`, {
     method: "POST",
     body: form,
   });
@@ -490,7 +504,7 @@ export async function saveTestCasesToProject(
   testCases: TestCaseSaveItem[]
 ): Promise<void> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/testcases/save-to-project`, {
+  const res = await apiFetch(`${base}/api/testcases/save-to-project`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ module_id: moduleId, test_cases: testCases }),
@@ -502,7 +516,7 @@ export async function getTestCasesByModule(
   moduleId: number
 ): Promise<ModuleTestCaseWithLatestExecution[]> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/testcases/modules/${moduleId}/testcases`);
+  const res = await apiFetch(`${base}/api/testcases/modules/${moduleId}/testcases`);
   if (!res.ok) await handleError(res);
   return res.json();
 }
@@ -520,7 +534,7 @@ export async function executeBatch(
       notes: e.notes ?? null,
     })),
   };
-  const res = await fetch(`${base}/api/testcases/modules/${moduleId}/execute-batch`, {
+  const res = await apiFetch(`${base}/api/testcases/modules/${moduleId}/execute-batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -532,27 +546,27 @@ export async function getExecutionHistory(
   testCaseId: number
 ): Promise<TestExecutionResponse[]> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/testcases/${testCaseId}/executions`);
+  const res = await apiFetch(`${base}/api/testcases/${testCaseId}/executions`);
   if (!res.ok) await handleError(res);
   return res.json();
 }
 
 export async function deletePersistedTestCase(id: number): Promise<void> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/testcases/db/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`${base}/api/testcases/db/${id}`, { method: "DELETE" });
   if (!res.ok) await handleError(res);
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/dashboard`);
+  const res = await apiFetch(`${base}/api/dashboard`);
   if (!res.ok) await handleError(res);
   return res.json();
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
   const base = getBaseUrl();
-  const res = await fetch(`${base}/api/dashboard`);
+  const res = await apiFetch(`${base}/api/dashboard`);
   if (!res.ok) await handleError(res);
   const data = await res.json();
   // Backend uses snake_case keys
@@ -583,7 +597,7 @@ async function downloadBlob(
     } as HeadersInit;
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(url, opts);
+  const res = await apiFetch(url, opts);
   if (!res.ok) await handleError(res);
   const blob = await res.blob();
   let filename = "download";
@@ -652,7 +666,7 @@ export async function exportCombinedModulesToExcel(
   const form = new FormData();
   form.append("module_ids", JSON.stringify(moduleIds));
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     body: form,
   });
@@ -678,7 +692,7 @@ export async function exportCombinedModulesToExcelTemplate(
   form.append("template", templateFile);
   form.append("module_ids", JSON.stringify(moduleIds));
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     body: form,
   });
@@ -703,7 +717,7 @@ export async function exportModuleToExcelTemplate(
   const form = new FormData();
   form.append("template", templateFile);
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     body: form,
   });

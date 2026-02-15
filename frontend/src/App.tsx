@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Link, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Sun,
   Moon,
   Maximize2,
   Minimize2,
+  LogOut,
 } from "lucide-react";
 import { GenerationForm, type BatchFormValues, type SingleFeatureValues } from "@/components/GenerationForm";
 import { ResultsTableSkeleton } from "@/components/ResultsTableSkeleton";
@@ -12,7 +13,10 @@ import { BatchResultsView } from "@/components/BatchResultsView";
 import { ProjectList } from "@/components/ProjectManagement/ProjectList";
 import { ProjectDetail } from "@/components/ProjectManagement/ProjectDetail";
 import { PersonalDashboard } from "@/components/Dashboard/PersonalDashboard";
+import { LoginPage } from "@/components/LoginPage";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getToken } from "@/api/auth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { batchGenerate, getBatchStatus, retryBatchFeature } from "@/api/client";
 import type { BatchStatusResponse } from "@/api/types";
@@ -66,6 +70,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const hasToken = !!getToken();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -89,7 +95,7 @@ function Shell({ children }: { children: React.ReactNode }) {
               className="min-w-0 text-left"
             >
               <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">
-                QA Platform
+                QAMP
               </h1>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
                 AI test generation and personal test management.
@@ -122,20 +128,38 @@ function Shell({ children }: { children: React.ReactNode }) {
               Dashboard
             </Link>
           </nav>
-          <button
-            type="button"
-            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-            title={
-              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
-            }
-            className="shrink-0 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
-          >
-            {theme === "light" ? (
-              <Moon className="h-5 w-5" />
-            ) : (
-              <Sun className="h-5 w-5" />
+          <div className="flex items-center gap-1 shrink-0">
+            {hasToken && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  logout();
+                  navigate("/login", { replace: true });
+                }}
+                title="Sign out"
+                className="text-neutral-600 dark:text-neutral-300 gap-1.5"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </Button>
             )}
-          </button>
+            <button
+              type="button"
+              onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+              title={
+                theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+              }
+              className="p-2 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700"
+            >
+              {theme === "light" ? (
+                <Moon className="h-5 w-5" />
+              ) : (
+                <Sun className="h-5 w-5" />
+              )}
+            </button>
+          </div>
         </div>
       </header>
       {children}
@@ -386,6 +410,7 @@ function ProjectDetailPage() {
 }
 
 export default function App() {
+  const { authState } = useAuth();
   const [batchId, setBatchId] = useState<string | null>(null);
   const [batch, setBatch] = useState<BatchStatusResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -394,9 +419,27 @@ export default function App() {
   const [panelCollapsed, setPanelCollapsed] = useState(getStoredPanelCollapsed);
   const [resultsFullscreen, setResultsFullscreen] = useState(false);
 
+  if (authState === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900">
+        <p className="text-neutral-500 dark:text-neutral-400">Loading...</p>
+      </div>
+    );
+  }
+
+  if (authState === "login") {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
   return (
     <Shell>
       <Routes>
+        <Route path="/login" element={<Navigate to="/" replace />} />
         <Route
           path="/"
           element={

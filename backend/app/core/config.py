@@ -76,6 +76,21 @@ class Settings(BaseSettings):
     )
     groq_timeout_seconds: int = Field(default=120)
 
+    # Basic auth (credentials from .env; when both set, routes are protected)
+    auth_username: Optional[str] = Field(
+        default=None,
+        description="Login username. Set with AI_TC_GEN_AUTH_USERNAME (or USERNAME).",
+    )
+    auth_password: Optional[str] = Field(
+        default=None,
+        description="Login password. Set with AI_TC_GEN_AUTH_PASSWORD (or PASSWORD).",
+    )
+    jwt_secret: str = Field(
+        default="qamp-dev-secret-change-in-production",
+        description="Secret for JWT signing. Set AI_TC_GEN_JWT_SECRET in production.",
+    )
+    jwt_expire_minutes: int = Field(default=60 * 24, description="JWT expiry in minutes.")
+
     # Security (placeholder for future auth)
     api_key_header_name: Optional[str] = Field(default=None)
 
