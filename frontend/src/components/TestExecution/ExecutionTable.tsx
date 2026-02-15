@@ -1,8 +1,9 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { Eye, Trash2 } from "lucide-react";
+import { Eye, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { executeBatch, deletePersistedTestCase, updateModuleStatus, type ModuleTestCaseWithLatestExecution, type ModuleResponse } from "@/api/client";
 import { TestCaseDetailModal } from "./TestCaseDetailModal";
+import { AddTestCaseModal } from "./AddTestCaseModal";
 import { ExportMenu } from "./ExportMenu";
 
 type StatusState = "Not Executed" | "Passed" | "Failed" | "Blocked";
@@ -122,6 +123,7 @@ export function ExecutionTable({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
   // Sync rows from latest_execution when testCases change (e.g. after refetch or load)
   useEffect(() => {
@@ -263,6 +265,15 @@ export function ExecutionTable({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAddModalOpen(true)}
+            className="gap-1.5"
+          >
+            <Plus className="h-4 w-4" />
+            Add Test Case
+          </Button>
           {projectId != null && projectName != null && moduleName != null && (
             <ExportMenu
               moduleId={moduleId}
@@ -435,6 +446,17 @@ export function ExecutionTable({
         open={selected != null}
         onClose={() => setSelected(null)}
         testCase={selected}
+      />
+
+      <AddTestCaseModal
+        open={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        onSuccess={() => {
+          setToast({ message: "Test case created successfully", type: "success" });
+          setTimeout(() => setToast(null), 3000);
+          onTestCaseDeleted?.(); // Reuse to trigger refetch
+        }}
+        moduleId={moduleId}
       />
 
       {showLeaveConfirm && (

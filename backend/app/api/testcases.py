@@ -679,6 +679,64 @@ async def save_test_cases_to_project(
     return {"created_ids": created_ids}
 
 
+@router.post(
+    "/modules/{module_id}/testcase",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a single test case manually in a module",
+)
+async def create_test_case_for_module(
+    module_id: int,
+    scenario: str = Form(...),
+    description: str = Form(...),
+    preconditions: str = Form(""),
+    test_steps: str = Form(...),
+    expected_result: str = Form(...),
+    test_data: str = Form(""),
+    priority: str = Form("Medium"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Create a single test case manually. Steps are provided as newline-separated text."""
+    module = db.query(models.Module).filter(models.Module.id == module_id).first()
+    if not module:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Module not found",
+        )
+
+    # Count existing test cases to generate ID
+    existing_count = db.query(models.TestCase).filter(models.TestCase.module_id == module_id).count()
+    test_id = f"TC_M{module_id}_{existing_count + 1:03d}"
+
+    # Parse steps (split by newline, filter empty)
+    steps_list = [s.strip() for s in test_steps.split("\n") if s.strip()]
+    if not steps_list:
+        steps_list = [test_steps]
+
+    entity = models.TestCase(
+        module_id=module_id,
+        test_id=test_id,
+        scenario=scenario,
+        description=description,
+        preconditions=preconditions or "",
+        steps=steps_list,
+        expected_result=expected_result,
+        test_data=test_data or None,
+        priority=priority or "Medium",
+        tags=None,
+    )
+    db.add(entity)
+    db.commit()
+    db.refresh(entity)
+
+    return {
+        "id": entity.id,
+        "test_id": entity.test_id,
+        "scenario": entity.scenario,
+        "message": "Test case created successfully",
+    }
+
+
+
 @router.get(
     "/modules/{module_id}/testcases",
     summary="List all test cases for a module",

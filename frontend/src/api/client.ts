@@ -127,6 +127,27 @@ export async function deleteTestCase(testCaseId: string): Promise<void> {
   if (!res.ok) await handleError(res);
 }
 
+/** Download merged CSV for the batch with auth. */
+export async function exportBatchAllCsv(batchId: string): Promise<void> {
+  const base = getBaseUrl();
+  const url = `${base}/api/testcases/batches/${encodeURIComponent(batchId)}/export-all`;
+  const res = await apiFetch(url);
+  if (!res.ok) await handleError(res);
+
+  const blob = await res.blob();
+  let filename = "batch_export.csv";
+  const disposition = res.headers.get("Content-Disposition");
+  if (disposition) {
+    const match = /filename[*]?=(?:UTF-8'')?["']?([^"'\s;]+)["']?/.exec(disposition);
+    if (match?.[1]) filename = match[1].trim();
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 /** Returns the URL to download merged (deduped) CSV for the batch. Backend sets filename via Content-Disposition. */
 export function getBatchExportAllUrl(batchId: string): string {
   const base = getBaseUrl();
@@ -511,6 +532,37 @@ export async function saveTestCasesToProject(
   });
   if (!res.ok) await handleError(res);
 }
+
+export async function createManualTestCase(
+  moduleId: number,
+  data: {
+    scenario: string;
+    description: string;
+    preconditions?: string;
+    test_steps: string;
+    expected_result: string;
+    test_data?: string;
+    priority?: string;
+  }
+): Promise<{ id: number; test_id: string; scenario: string; message: string }> {
+  const base = getBaseUrl();
+  const form = new FormData();
+  form.append("scenario", data.scenario);
+  form.append("description", data.description);
+  form.append("preconditions", data.preconditions || "");
+  form.append("test_steps", data.test_steps);
+  form.append("expected_result", data.expected_result);
+  form.append("test_data", data.test_data || "");
+  form.append("priority", data.priority || "Medium");
+
+  const res = await apiFetch(`${base}/api/testcases/modules/${moduleId}/testcase`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) await handleError(res);
+  return res.json();
+}
+
 
 export async function getTestCasesByModule(
   moduleId: number
