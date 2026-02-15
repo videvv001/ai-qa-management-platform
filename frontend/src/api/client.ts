@@ -633,6 +633,41 @@ export async function exportAllModulesAsZip(projectId: number): Promise<void> {
   triggerDownload(blob, filename);
 }
 
+/** Export single module to Excel (no template). Backend tries multi-row, falls back to single-row on error. */
+export async function exportModuleToExcel(moduleId: number): Promise<void> {
+  const base = getBaseUrl();
+  const { blob, filename } = await downloadBlob(
+    `${base}/api/testcases/modules/${moduleId}/export-excel`,
+    "GET"
+  );
+  triggerDownload(blob, filename);
+}
+
+/** Export selected modules to one Excel file (no template). Backend tries multi-row, falls back to single-row on error. */
+export async function exportCombinedModulesToExcel(
+  moduleIds: number[]
+): Promise<void> {
+  const base = getBaseUrl();
+  const url = `${base}/api/testcases/modules/export-excel-combined`;
+  const form = new FormData();
+  form.append("module_ids", JSON.stringify(moduleIds));
+
+  const res = await fetch(url, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) await handleError(res);
+
+  const blob = await res.blob();
+  let filename = "TestCases_Multiple_Modules.xlsx";
+  const disposition = res.headers.get("Content-Disposition");
+  if (disposition) {
+    const match = /filename[*]?=(?:UTF-8'')?["']?([^"'\s;]+)["']?/.exec(disposition);
+    if (match?.[1]) filename = match[1].trim();
+  }
+  triggerDownload(blob, filename);
+}
+
 export async function exportCombinedModulesToExcelTemplate(
   templateFile: File,
   moduleIds: number[]

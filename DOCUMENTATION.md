@@ -81,7 +81,7 @@ QA Platform (qaplat) is a personal QA application that combines **AI-powered tes
 | **Service** | `TestCaseService` (`app.services`) | AI generation, batch orchestration, in-memory batch/store, dedup |
 | **Providers** | `OllamaProvider`, `OpenAIProvider`, `GeminiProvider`, `GroqProvider` (`app.providers`) | LLM calls; implement `LLMProvider` interface |
 | **Utils** | `prompt_builder`, `embeddings`, `token_allocation` | Prompts, semantic dedup, max_tokens |
-| **Utils** | `csv_filename`, `excel_exporter`, `excel_template_merge` | Exports and Excel template merge |
+| **Utils** | `csv_filename`, `excel_exporter`, `excel_template_merge` | Exports, Excel template merge (auto-detect headers, multi-row/single-row fallback) |
 
 ### Data Flow
 
@@ -357,10 +357,18 @@ curl -X POST http://localhost:8000/api/testcases/generate-test-cases \
 
 ### Export Workflow
 
+**AI Generator (batch results)**
+
 - **Per-feature CSV**: Uses backend-generated filename (`tc_{feature}_{timestamp}.csv`).
 - **Export All (CSV)**: `GET /api/testcases/batches/{batch_id}/export-all` returns merged, deduplicated CSV.
 - **Export to Excel Template (single feature)**: Click “Export to Excel Template” on a feature → upload .xlsx (or use stored template) → optional “Remember this template” → Export. Backend merges that feature’s test cases into the template’s “Test Cases” sheet; **Summary** sheet is unchanged.
 - **Export All to Excel Template**: Click “Export All to Excel Template” (top right) → same template upload → Export. All features’ test cases are combined in order into the single “Test Cases” sheet (e.g. Feature1’s 5 cases, then Feature2’s 3 cases = 8 rows). Column A = sequential No. (1–8); Column B = Test ID per feature (e.g. `TC_FEAT1_001`, `TC_FEAT2_001`). The backend returns a timestamped filename including UTC date and time (e.g. `All_Features_Test_Cases_2026-02-11_1432.xlsx`); the frontend mirrors this pattern if the header is missing.
+
+### Excel Template Merge (Execution Table)
+
+When exporting to Excel from the execution table: (1) User selects an .xlsx template (max 10 MB). (2) System auto-detects target fields by scanning each sheet: row 2, then row 1 (Test ID, Test Scenario, Expected Result, etc.); if none found, moves to next sheet. (3) Merges test cases into the detected header layout. (4) Fallback: if merge fails, retries with single-row logic (row 1 as header). If both fail, returns an error.
+
+**Execution table export options**: Export CSV (This Module / Select Modules), Export All Modules (ZIP), Export to Excel (select file, merge current module), Export to Excel (Select Modules) (select file + modules).
 
 ### Excel Template Structure
 
@@ -371,6 +379,8 @@ The template must contain a sheet named **“Test Cases”**. Expected layout:
 - **Columns A–L**: No., Test ID, Test Scenario, Test Description, Pre-condition, Test Data, Step (enumerated), Expected Result, Actual Result, Status, Comment, (empty). Formatting from row 3 is applied to new rows.
 
 If the template has a **Summary** sheet, it is left unchanged. Template file limit: 10 MB; `.xlsx` only.
+
+**Execution table templates** (Export to Excel from project detail): Flexible layout. System auto-detects headers by scanning each sheet row 1 and row 2 for target field names (case-insensitive): No, Test ID, Test Scenario, Test Description, Pre-condition, Test Data, Step, Expected Result, Actual Result, Status, Comment. Supports single-row (headers in row 1, data from row 2) and multi-row (headers in row 2, data from row 3) with automatic fallback.
 
 ### Delete Test Case
 
@@ -440,6 +450,8 @@ Base URL: `http://localhost:8000` (or configured host)
 | POST | `/api/testcases/modules/{module_id}/execute-batch` | Batch record executions (body: executions[{ test_case_id, status, actual_result, notes }]) |
 | GET | `/api/testcases/{id}/executions` | Execution history for a test case |
 | DELETE | `/api/testcases/db/{id}` | Delete persisted test case |
+| POST | `/api/testcases/modules/{module_id}/export-to-excel-template` | Export module to Excel. Multipart: `template` (.xlsx). Auto-detects headers (row 1/row 2 per sheet), fallback multi-row → single-row on error. |
+| POST | `/api/testcases/modules/export-to-excel-template-combined` | Export selected modules to one Excel file. Multipart: `template` (.xlsx), `module_ids` (JSON array). Same merge logic as above. |
 
 ### Dashboard
 

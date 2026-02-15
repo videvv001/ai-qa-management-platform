@@ -182,6 +182,7 @@ Open `http://localhost:5173` in your browser.
     - Inline **Actual Result** text field.
     - **Save All Changes** persists all status and actual-result updates in one API call.
     - **View** opens a detail modal with full test case fields and execution history.
+    - **Export** menu: CSV (this module / select modules), All Modules (ZIP), **Export to Excel** (select .xlsx file, merge current module), **Export to Excel (Select Modules)** (select .xlsx file + modules). Excel merge auto-detects target fields (scans sheets, row 1 and row 2) and falls back to single-row header if multi-row fails.
 
 - `/dashboard` — **Personal dashboard**  
   High-level QA stats (total cases, executed, pass rate, pending) and recent execution activity.
@@ -272,5 +273,8 @@ Use `.env` in the project root for backend variables (the backend loads it from 
 - `DELETE /api/testcases/db/{id}` — delete persisted test case.
 
 - `GET /api/dashboard` — (optional) aggregate stats for dashboard (total cases, executed, pass rate, recent activity).
+
+- `POST /api/testcases/modules/{module_id}/export-to-excel-template` — **Export to Excel** (single module). Multipart: `template` (.xlsx). Merges test cases into template with auto-detection (scans sheets for target headers in row 1 or row 2) and fallback (multi-row → single-row on error).
+- `POST /api/testcases/modules/export-to-excel-template-combined` — **Export to Excel (Select Modules)**. Multipart: `template` (.xlsx), `module_ids` (JSON array). Same merge logic as above for multiple modules combined.
 
 See `DOCUMENTATION.md` for full API reference, Excel template structure, and architecture details.

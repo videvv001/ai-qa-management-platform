@@ -35,9 +35,11 @@ from app.utils.csv_filename import generate_csv_filename
 from app.utils.excel_exporter import test_cases_to_excel
 from app.utils.excel_template_merge import (
     MAX_TEMPLATE_SIZE_BYTES,
+    build_combined_modules_excel,
+    build_module_cases_excel,
     format_test_steps,
     merge_all_features_to_excel,
-    merge_module_cases_to_excel_template,
+    merge_module_cases_to_excel_template_with_fallback,
     merge_test_cases_to_excel,
 )
 from app.utils.import_parser import parse_file, HeaderDetectionAmbiguous
@@ -1032,6 +1034,159 @@ async def export_all_modules_zip(
     )
 
 
+def _build_cases_with_exec(db: Session, module_id: int) -> List[dict]:
+    """Load test cases with latest execution for a module."""
+    cases_data = (
+        db.query(models.TestCase)
+        .filter(models.TestCase.module_id == module_id)
+        .order_by(models.TestCase.id)
+        .all()
+    )
+    cases_with_exec: List[dict] = []
+    for c in cases_data:
+        latest = (
+            db.query(models.TestExecution)
+            .filter(models.TestExecution.test_case_id == c.id)
+            .order_by(models.TestExecution.executed_at.desc())
+            .first()
+        )
+        cases_with_exec.append(
+            {
+                "id": c.id,
+                "test_id": c.test_id,
+                "scenario": c.scenario,
+                "description": c.description,
+                "preconditions": c.preconditions,
+                "test_data": getattr(c, "test_data", None) or "",
+                "steps": c.steps,
+                "expected_result": c.expected_result,
+                "latest_execution": (
+                    {
+                        "actual_result": latest.actual_result,
+                        "status": latest.status,
+                        "notes": latest.notes,
+                    }
+                    if latest
+                    else None
+                ),
+            }
+        )
+    return cases_with_exec
+
+
+@router.get(
+    "/modules/{module_id}/export-excel",
+    summary="Export module test cases to Excel (no template, auto fallback)",
+)
+async def export_module_to_excel(
+    module_id: int,
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """
+    Generate Excel file with test cases. No template required.
+    Tries multi-row header first; on error, falls back to single-row header.
+    """
+    module = db.query(models.Module).filter(models.Module.id == module_id).first()
+    if not module:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Module not found",
+        )
+    cases_with_exec = _build_cases_with_exec(db, module_id)
+    multi_row_error = None
+    try:
+        out_path = build_module_cases_excel(cases_with_exec, module.name, "multi-row")
+        suffix = "Categorized"
+    except Exception as e:
+        multi_row_error = e
+        try:
+            out_path = build_module_cases_excel(cases_with_exec, module.name, "single-row")
+            suffix = "Simple"
+        except Exception as single_row_error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    f"Export failed with both formats. "
+                    f"Multi-row: {multi_row_error}. Single-row: {single_row_error}"
+                ),
+            ) from single_row_error
+
+    safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in module.name)[:80]
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d")
+    filename = f"TestCases_{safe_name}_{suffix}_{timestamp}.xlsx"
+    return FileResponse(
+        out_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=filename,
+    )
+
+
+@router.post(
+    "/modules/export-excel-combined",
+    summary="Export selected modules to one Excel file (no template, auto fallback)",
+)
+async def export_combined_modules_to_excel(
+    module_ids: str = Form(..., alias="module_ids", description="JSON array of module IDs"),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """
+    Combine test cases from multiple modules into one Excel file. No template required.
+    Tries multi-row header first; on error, falls back to single-row header.
+    """
+    try:
+        ids = json.loads(module_ids)
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid module_ids JSON: {e}",
+        ) from e
+    if not isinstance(ids, list) or len(ids) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="module_ids must be a non-empty JSON array",
+        )
+
+    cases_by_module: List[Tuple[str, List[dict]]] = []
+    for mid in ids:
+        module = db.query(models.Module).filter(models.Module.id == mid).first()
+        if not module:
+            continue
+        cases_with_exec = _build_cases_with_exec(db, mid)
+        cases_by_module.append((module.name, cases_with_exec))
+
+    if not cases_by_module:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No modules or test cases found",
+        )
+
+    multi_row_error = None
+    try:
+        out_path = build_combined_modules_excel(cases_by_module, "multi-row")
+        suffix = "Categorized"
+    except Exception as e:
+        multi_row_error = e
+        try:
+            out_path = build_combined_modules_excel(cases_by_module, "single-row")
+            suffix = "Simple"
+        except Exception as single_row_error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    f"Export failed with both formats. "
+                    f"Multi-row: {multi_row_error}. Single-row: {single_row_error}"
+                ),
+            ) from single_row_error
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d")
+    filename = f"TestCases_Multiple_Modules_{suffix}_{timestamp}.xlsx"
+    return FileResponse(
+        out_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=filename,
+    )
+
+
 @router.post(
     "/modules/{module_id}/export-to-excel-template",
     summary="Merge module test cases into uploaded Excel template",
@@ -1097,7 +1252,7 @@ async def export_module_to_excel_template(
     template_path = tmp_dir / f"tmpl_{id(template)}_{template.filename or 'template.xlsx'}"
     try:
         template_path.write_bytes(content)
-        out_path = merge_module_cases_to_excel_template(
+        out_path = merge_module_cases_to_excel_template_with_fallback(
             str(template_path), cases_with_exec, module.name
         )
         safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in module.name)[:80]
@@ -1209,7 +1364,7 @@ async def export_combined_modules_to_excel_template(
     template_path = tmp_dir / f"tmpl_comb_{id(template)}_{template.filename or 'template.xlsx'}"
     try:
         template_path.write_bytes(content)
-        out_path = merge_module_cases_to_excel_template(
+        out_path = merge_module_cases_to_excel_template_with_fallback(
             str(template_path), cases_with_exec, first_module_name or "Combined"
         )
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")

@@ -46,11 +46,10 @@ export function ExportMenu({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
   const [moduleSelectOpen, setModuleSelectOpen] = useState(false);
-  const [excelCombinedOpen, setExcelCombinedOpen] = useState(false);
-  const [excelCombinedTemplate, setExcelCombinedTemplate] = useState<File | null>(null);
   const [selectedModuleIds, setSelectedModuleIds] = useState<Set<number>>(new Set([moduleId]));
-  const [excelInputKey, setExcelInputKey] = useState(0);
-  const [excelCombinedInputKey, setExcelCombinedInputKey] = useState(0);
+  const [excelExportOpen, setExcelExportOpen] = useState(false);
+  const [excelExportTemplate, setExcelExportTemplate] = useState<File | null>(null);
+  const [excelExportInputKey, setExcelExportInputKey] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const flatModules = flattenModules(modules);
@@ -60,7 +59,7 @@ export function ExportMenu({
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpen(false);
         setModuleSelectOpen(false);
-        setExcelCombinedOpen(false);
+        setExcelExportOpen(false);
       }
     };
     if (open) {
@@ -108,39 +107,30 @@ export function ExportMenu({
     runExport("Export All Modules (ZIP)", () => exportAllModulesAsZip(projectId));
   };
 
-  const handleExcelTemplateClick = () => {
-    document.getElementById(`export-excel-input-${moduleId}`)?.click();
+  const handleExportExcel = () => {
+    document.getElementById(`export-excel-file-input-${moduleId}`)?.click();
   };
 
-  const handleExcelCombinedTemplateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExportExcelFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
       onError?.("Only .xlsx files are allowed.");
+      e.target.value = "";
       return;
     }
-    setExcelCombinedTemplate(file);
+    if (file.size > 10 * 1024 * 1024) {
+      onError?.("File must be under 10MB.");
+      e.target.value = "";
+      return;
+    }
+    setOpen(false);
+    runExport("Export to Excel", () => exportModuleToExcelTemplate(moduleId, file));
     e.target.value = "";
-    setExcelCombinedInputKey((k) => k + 1);
+    setExcelExportInputKey((k) => k + 1);
   };
 
-  const handleExcelCombinedExport = () => {
-    if (!excelCombinedTemplate) {
-      onError?.("Please select a template file.");
-      return;
-    }
-    if (selectedModuleIds.size === 0) {
-      onError?.("Select at least one module.");
-      return;
-    }
-    setExcelCombinedOpen(false);
-    setExcelCombinedTemplate(null);
-    runExport("Export to Excel Template (Select Modules)", () =>
-      exportCombinedModulesToExcelTemplate(excelCombinedTemplate!, Array.from(selectedModuleIds))
-    );
-  };
-
-  const handleExcelTemplateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelExportTemplateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
@@ -148,15 +138,29 @@ export function ExportMenu({
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      onError?.("Template must be under 10MB.");
+      onError?.("File must be under 10MB.");
       return;
     }
-    setOpen(false);
-    runExport("Export to Excel Template", () =>
-      exportModuleToExcelTemplate(moduleId, file)
-    );
+    setExcelExportTemplate(file);
     e.target.value = "";
-    setExcelInputKey((k) => k + 1);
+    setExcelExportInputKey((k) => k + 1);
+  };
+
+  const handleExportExcelSelectModules = () => {
+    if (!excelExportTemplate) {
+      onError?.("Please select an Excel file.");
+      return;
+    }
+    if (selectedModuleIds.size === 0) {
+      onError?.("Select at least one module.");
+      return;
+    }
+    setExcelExportOpen(false);
+    const file = excelExportTemplate;
+    setExcelExportTemplate(null);
+    runExport("Export to Excel (Select Modules)", () =>
+      exportCombinedModulesToExcelTemplate(file, Array.from(selectedModuleIds))
+    );
   };
 
   const toggleModule = (id: number) => {
@@ -174,12 +178,12 @@ export function ExportMenu({
   return (
     <div className="relative" ref={menuRef}>
       <input
-        id={`export-excel-input-${moduleId}`}
+        id={`export-excel-file-input-${moduleId}`}
         type="file"
         accept=".xlsx"
         className="hidden"
-        onChange={handleExcelTemplateChange}
-        key={excelInputKey}
+        onChange={handleExportExcelFileChange}
+        key={excelExportInputKey}
       />
       <Button
         size="sm"
@@ -202,7 +206,7 @@ export function ExportMenu({
         )}
       </Button>
 
-      {open && !moduleSelectOpen && (
+      {open && !moduleSelectOpen && !excelExportOpen && (
         <div className="absolute right-0 top-full z-50 mt-1 min-w-[240px] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
           <button
             type="button"
@@ -231,41 +235,40 @@ export function ExportMenu({
           <button
             type="button"
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            onClick={handleExcelTemplateClick}
+            onClick={handleExportExcel}
           >
             <FileSpreadsheet className="h-4 w-4 shrink-0" />
-            Export to Excel Template
+            Export to Excel
           </button>
           <button
             type="button"
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
             onClick={() => {
-              setExcelCombinedOpen(true);
+              setExcelExportOpen(true);
               setModuleSelectOpen(false);
-              setExcelCombinedTemplate(null);
             }}
           >
             <FileSpreadsheet className="h-4 w-4 shrink-0" />
-            Export to Excel Template (Select Modules)
+            Export to Excel (Select Modules)
           </button>
         </div>
       )}
 
-      {excelCombinedOpen && (
+      {excelExportOpen && (
         <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
           <p className="mb-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">
-            Export to Excel Template (Select Modules)
+            Export to Excel (Select Modules)
           </p>
           <input
             type="file"
             accept=".xlsx"
             className="mb-2 block w-full text-xs"
-            onChange={handleExcelCombinedTemplateChange}
-            key={excelCombinedInputKey}
+            onChange={handleExcelExportTemplateChange}
+            key={excelExportInputKey}
           />
-          {excelCombinedTemplate && (
+          {excelExportTemplate && (
             <p className="mb-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-              Template: {excelCombinedTemplate.name}
+              File: {excelExportTemplate.name}
             </p>
           )}
           <p className="mb-2 text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -289,13 +292,13 @@ export function ExportMenu({
             ))}
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setExcelCombinedOpen(false)}>
+            <Button variant="outline" size="sm" onClick={() => setExcelExportOpen(false)}>
               Cancel
             </Button>
             <Button
               size="sm"
-              onClick={handleExcelCombinedExport}
-              disabled={!excelCombinedTemplate || selectedModuleIds.size === 0}
+              onClick={handleExportExcelSelectModules}
+              disabled={!excelExportTemplate || selectedModuleIds.size === 0}
             >
               Export
             </Button>
@@ -303,7 +306,7 @@ export function ExportMenu({
         </div>
       )}
 
-      {moduleSelectOpen && !excelCombinedOpen && (
+      {moduleSelectOpen && !excelExportOpen && (
         <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
           <p className="mb-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">
             Select modules to combine into one CSV
