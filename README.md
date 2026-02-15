@@ -48,7 +48,7 @@ qamp/
 
 ## First-time setup
 
-Run these steps once after cloning or moving the project. All commands are from the **project root** (e.g. `F:\project\tool\newaitool\qamp` or `qamp/`).
+Run these steps once after cloning or moving the project. All commands are from the **project root** (e.g. `F:\project\tool\newaitool\qamp` or `/home/user/projects/qamp`).
 
 ### 1. Python virtual environment and backend dependencies
 
@@ -62,7 +62,17 @@ python -m venv venv
 pip install -r backend\requirements.txt
 ```
 
-**macOS / Linux (bash):**
+**Linux:**
+
+On Debian/Ubuntu, ensure the venv module is installed: `sudo apt install python3-venv python3-pip`.
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r backend/requirements.txt
+```
+
+**macOS:**
 
 ```bash
 python3 -m venv venv
