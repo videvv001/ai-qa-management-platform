@@ -122,3 +122,6 @@ packages/
 *.db
 *.sqlite
 *.sqlite3
+
+# Python virtual environment
+venv/
