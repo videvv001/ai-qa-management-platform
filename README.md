@@ -19,7 +19,7 @@ Personal QA platform for generating, saving, organizing, and executing high-qual
 ## Project layout
 
 ```text
-qaplat/
+qamp/
 ├── backend/                # Python FastAPI app (run from here)
 │   ├── app/                # Application package
 │   │   ├── main.py         # FastAPI app (uvicorn app.main:app)
@@ -48,7 +48,7 @@ qaplat/
 
 ## First-time setup
 
-Run these steps once after cloning or moving the project. All commands are from the **project root** (e.g. `F:\project\tool\newaitool\qaplat` or `qaplat/`).
+Run these steps once after cloning or moving the project. All commands are from the **project root** (e.g. `F:\project\tool\newaitool\qamp` or `qamp/`).
 
 ### 1. Python virtual environment and backend dependencies
 

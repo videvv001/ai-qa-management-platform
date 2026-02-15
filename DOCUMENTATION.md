@@ -4,7 +4,7 @@
 
 ### Purpose
 
-QA Platform (qaplat) is a personal QA application that combines **AI-powered test case generation** with **persistent test management**. It produces structured test cases from feature descriptions using LLMs (Ollama, OpenAI, Gemini, or Groq), and stores them in **SQLite** under **projects** and **modules**. You can run executions (status + actual result) in a table UI and track history. The system supports single-feature and batch generation, scenario-driven coverage, deduplication, CSV/Excel export, **Save to Project**, and **execution tracking** with a dashboard.
+QA Platform (qamp) is a personal QA application that combines **AI-powered test case generation** with **persistent test management**. It produces structured test cases from feature descriptions using LLMs (Ollama, OpenAI, Gemini, or Groq), and stores them in **SQLite** under **projects** and **modules**. You can run executions (status + actual result) in a table UI and track history. The system supports single-feature and batch generation, scenario-driven coverage, deduplication, CSV/Excel export, **Save to Project**, and **execution tracking** with a dashboard.
 
 ### Problems It Solves
 
@@ -172,7 +172,7 @@ QA Platform (qaplat) is a personal QA application that combines **AI-powered tes
 ## 4. Folder Structure
 
 ```
-qaplat/
+qamp/
 ├── backend/                # Python FastAPI app (run from here)
 │   ├── app/
 │   │   ├── __init__.py

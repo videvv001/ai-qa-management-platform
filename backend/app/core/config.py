@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     """
 
     # Core app settings
-    app_name: str = Field(default="qaplat")
+    app_name: str = Field(default="qamp")
     environment: str = Field(default="development")  # development | staging | production
     debug: bool = Field(default=False)
 
