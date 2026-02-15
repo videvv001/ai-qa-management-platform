@@ -17,8 +17,8 @@ import type { BatchFeatureResult, BatchStatusResponse, TestCaseItem } from "@/ap
 import {
   deleteTestCase,
   exportAllToExcelTemplate,
+  exportBatchAllCsv,
   exportToExcelTemplate,
-  getBatchExportAllUrl,
   getCsvFilename,
   itemToExportPayload,
   saveTestCasesToProject,
@@ -108,14 +108,13 @@ export function BatchResultsView({
     []
   );
 
-  const handleExportAll = useCallback(() => {
-    const url = getBatchExportAllUrl(batch.batch_id);
-    const a = document.createElement("a");
-    a.href = url;
-    a.rel = "noopener noreferrer";
-    a.target = "_blank";
-    a.click();
-    onExportAll?.();
+  const handleExportAll = useCallback(async () => {
+    try {
+      await exportBatchAllCsv(batch.batch_id);
+      onExportAll?.();
+    } catch (e) {
+      console.error("Export failed:", e);
+    }
   }, [batch.batch_id, onExportAll]);
 
   const handleDeleteTestCase = useCallback(
