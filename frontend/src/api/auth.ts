@@ -1,0 +1,61 @@
+/**
+ * Auth API and token storage.
+ * When backend auth is enabled, login returns a JWT stored in localStorage.
+ */
+
+const AUTH_TOKEN_KEY = "qamp-auth-token";
+
+const getBaseUrl = (): string => {
+  const base = import.meta.env.VITE_API_BASE_URL;
+  if (base) return base.replace(/\/$/, "");
+  return "";
+};
+
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token: string): void {
+  try {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  } catch {}
+}
+
+export function clearToken(): void {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {}
+}
+
+export async function login(
+  username: string,
+  password: string
+): Promise<{ token: string }> {
+  const res = await fetch(`${getBaseUrl()}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Login failed");
+  }
+  return res.json();
+}
+
+export async function checkAuthEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/auth/auth-enabled`);
+    if (!res.ok) return false;
+    const json = await res.json();
+    return json.auth_enabled === true;
+  } catch (err) {
+    // Backend may not be running - treat as auth disabled so app still loads
+    console.warn("[Auth] checkAuthEnabled failed (is backend running on :8000?):", err);
+    return false;
+  }
+}

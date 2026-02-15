@@ -1,8 +1,9 @@
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 
+from app.core.auth import get_current_user
 from app.core.config import get_settings
 
-from . import health, testcases, projects, modules, dashboard
+from . import auth, health, testcases, projects, modules, dashboard
 
 
 def get_api_router() -> APIRouter:
@@ -11,35 +12,25 @@ def get_api_router() -> APIRouter:
     """
     root_router = APIRouter()
 
+    # Public routes (no auth)
     root_router.include_router(
         health.router,
         prefix="",
         tags=["health"],
     )
-
     root_router.include_router(
-        testcases.router,
-        prefix="/testcases",
-        tags=["testcases"],
+        auth.router,
+        prefix="/auth",
+        tags=["auth"],
     )
 
-    root_router.include_router(
-        projects.router,
-        prefix="/projects",
-        tags=["projects"],
-    )
-
-    root_router.include_router(
-        modules.router,
-        prefix="",
-        tags=["modules"],
-    )
-
-    root_router.include_router(
-        dashboard.router,
-        prefix="/dashboard",
-        tags=["dashboard"],
-    )
+    # Protected routes (require auth when configured)
+    protected = APIRouter(dependencies=[Depends(get_current_user)])
+    protected.include_router(testcases.router, prefix="/testcases", tags=["testcases"])
+    protected.include_router(projects.router, prefix="/projects", tags=["projects"])
+    protected.include_router(modules.router, prefix="", tags=["modules"])
+    protected.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+    root_router.include_router(protected)
 
     return root_router
 

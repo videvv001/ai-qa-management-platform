@@ -1,4 +1,4 @@
-# QA Platform (AI Test Case Generator + Personal QA)
+# QAMP (AI Test Case Generator + Personal QA)
 
 Personal QA platform for generating, saving, organizing, and executing high-quality test cases using LLMs (Ollama, OpenAI, Gemini, or Groq). Includes:
 
@@ -242,6 +242,8 @@ cd backend && python -m pytest tests/ -v
 | `AI_TC_GEN_GROQ_API_KEY` | — | Required for Groq provider (Llama 3.3 70B). Set in `.env`. |
 | `AI_TC_GEN_GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model name |
 | `AI_TC_GEN_DATABASE_URL` | `sqlite:///./testcases.db` | SQLAlchemy URL for persistent storage (projects, modules, test cases, executions) |
+| `USERNAME` / `PASSWORD` or `AI_TC_GEN_AUTH_USERNAME` / `AI_TC_GEN_AUTH_PASSWORD` | — | Basic auth credentials. When set, all API routes (except `/api/health` and `/api/auth/*`) require login. |
+| `AI_TC_GEN_JWT_SECRET` | (dev default) | Secret for JWT signing. Set in production. |
 | `VITE_API_BASE_URL` | (empty) | API base URL in production; empty uses dev proxy |
 
 Use `.env` in the project root for backend variables (the backend loads it from the project root when run from `backend/`). Use `frontend/.env` for `VITE_*` variables. The SQLite file is created in the backend working directory when the app starts.
