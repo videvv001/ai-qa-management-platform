@@ -117,3 +117,8 @@ packages/
 
 # But allow frontend lib
 !frontend/src/lib/
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
