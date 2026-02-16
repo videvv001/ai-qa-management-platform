@@ -14,7 +14,7 @@ Checklist and practices for running QAMP in production.
 - [ ] Backend deps: `pip install -r backend/requirements.txt`
 - [ ] Frontend deps: `npm install` in `frontend/`
 - [ ] PM2 installed: `npm install -g pm2`
-- [ ] Firewall allows needed ports (8000, 5173, or 80/443 with nginx)
+- [ ] Firewall allows needed ports (8000, frontend port default 5173 or `FRONTEND_PORT` from .env, or 80/443 with nginx)
 - [ ] PM2 persisted: `pm2 save` and `pm2 startup` run
 
 ---
@@ -77,5 +77,6 @@ pm2 save
 ## Changing ports
 
 - **Backend:** Edit the port in `run-backend.js` (uvicorn arguments).
-- **Frontend:** Edit `server.port` in `frontend/vite.config.ts`.  
+- **Frontend (PM2):** Set `FRONTEND_PORT` in project root `.env` (e.g. `FRONTEND_PORT=3000`). No code change needed; see [deployment](deployment.md#5-environment-variables).
+- **Frontend (dev):** Edit `server.port` in `frontend/vite.config.ts`.  
 Update `frontend/.env` (`VITE_API_BASE_URL`) if the backend URL or port changes.

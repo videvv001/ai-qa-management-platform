@@ -43,7 +43,7 @@ Personal QA platform for generating, saving, organizing, and executing test case
    ```bash
    npm run dev
    ```
-   - Frontend: http://localhost:5173  
+   - Frontend: http://localhost:5173 (configurable via `FRONTEND_PORT` in .env when using PM2; see [docs/deployment.md](docs/deployment.md))  
    - Backend: http://localhost:8000  
    - API docs: http://localhost:8000/docs  
 

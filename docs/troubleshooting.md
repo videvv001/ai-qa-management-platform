@@ -85,7 +85,7 @@ chmod +x start-pm2.sh stop-pm2.sh
 
 ```bash
 sudo lsof -i :8000   # backend
-sudo lsof -i :5173   # frontend
+sudo lsof -i :5173   # frontend (default); or the port from FRONTEND_PORT in .env
 ```
 
 **Kill by PID:**
@@ -149,7 +149,7 @@ pm2 restart qamp-frontend
 
 ## Can't connect from outside (VPS/Google Cloud)
 
-1. **Firewall:** Ensure rules allow 8000, 5173 (or 80/443 if using nginx).
+1. **Firewall:** Ensure rules allow 8000, frontend port (default 5173 or `FRONTEND_PORT` from .env), or 80/443 if using nginx.
 2. **VM tags:** For GCP, instance must have `http-server` (and `https-server` if using HTTPS).
 3. **Nginx:** If using proxy, check `sudo systemctl status nginx` and `sudo nginx -t`.
 4. **PM2:** `pm2 status` — both processes online.
@@ -165,4 +165,4 @@ cd frontend && npm run build && cd ..
 ./start-pm2.sh
 ```
 
-If ports are still in use, kill processes with `sudo lsof -i :8000` and `sudo lsof -i :5173`, then `sudo kill -9 <PID>`.
+If ports are still in use, kill processes with `sudo lsof -i :8000` and `sudo lsof -i :5173` (or your `FRONTEND_PORT`), then `sudo kill -9 <PID>`.

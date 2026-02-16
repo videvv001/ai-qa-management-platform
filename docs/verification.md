@@ -34,6 +34,8 @@ Should contain at least:
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
+**Optional:** In project root `.env`, `FRONTEND_PORT` sets the frontend port when using PM2 (default 5173).
+
 ### 3. PM2
 
 ```bash
@@ -77,9 +79,10 @@ test -f ecosystem.config.js && echo "OK" || echo "Missing"
 ```bash
 lsof -i :8000 2>/dev/null || true
 lsof -i :5173 2>/dev/null || true
+# If FRONTEND_PORT is set in .env (e.g. 3000), check that port too: lsof -i :3000
 ```
 
-No output means ports are free. If in use: `sudo lsof -i :8000` then `sudo kill -9 <PID>` (same for 5173).
+No output means ports are free. If in use: `sudo lsof -i :8000` then `sudo kill -9 <PID>` (same for 5173 or your `FRONTEND_PORT`).
 
 ### 9. Clean PM2 state (optional)
 
@@ -124,7 +127,7 @@ pm2 logs qamp-backend --lines 20 --nostream
 pm2 logs qamp-frontend --lines 20 --nostream
 ```
 
-Backend: FastAPI/Uvicorn on port 8000. Frontend: Vite on port 5173. No errors.
+Backend: FastAPI/Uvicorn on port 8000. Frontend: Vite on port 5173 (or `FRONTEND_PORT` from .env). No errors.
 
 ### 3. Health endpoint
 
@@ -140,7 +143,7 @@ Open http://localhost:8000/docs — Swagger UI should load.
 
 ### 5. Frontend
 
-Open http://localhost:5173 — login or main UI loads; no console errors (F12).
+Open http://localhost:5173 (or your FRONTEND_PORT from .env if set) — login or main UI loads; no console errors (F12).
 
 ### 6. Full flow
 

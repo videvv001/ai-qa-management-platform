@@ -25,7 +25,8 @@ One start command runs **both** backend and frontend. You should see two PM2 pro
    chmod +x start-pm2.sh stop-pm2.sh
    ./start-pm2.sh
    ```
-4. **Access:** Frontend http://localhost:5173 | Backend http://localhost:8000 | API docs http://localhost:8000/docs
+4. **Access:** Frontend http://localhost:5173 (or your `FRONTEND_PORT`) | Backend http://localhost:8000 | API docs http://localhost:8000/docs  
+   Frontend port defaults to **5173**; set `FRONTEND_PORT` in `.env` (e.g. `FRONTEND_PORT=3000`) to use another port.
 
 ### npm scripts
 
@@ -96,9 +97,13 @@ pm2 save
 
 ### 2.6 Firewall (Google Cloud)
 
+Allow backend (8000) and frontend (default 5173, or the port you set in `FRONTEND_PORT`):
+
 ```bash
 gcloud compute firewall-rules create allow-qamp-backend --allow tcp:8000 --target-tags=http-server
 gcloud compute firewall-rules create allow-qamp-frontend --allow tcp:5173 --target-tags=http-server
+# If using a different frontend port (e.g. 3000), open that instead:
+# gcloud compute firewall-rules create allow-qamp-frontend --allow tcp:3000 --target-tags=http-server
 ```
 
 ---
@@ -156,7 +161,7 @@ server {
     server_name your-domain.com;
 
     location / {
-        proxy_pass http://localhost:5173;
+        proxy_pass http://localhost:5173;   # or your FRONTEND_PORT if set in .env
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -218,10 +223,12 @@ Then set `VITE_API_BASE_URL=https://your-domain.com`, rebuild frontend, and rest
 
 ## 5. Environment variables
 
-### Backend (`.env` in project root)
+### Backend / PM2 (`.env` in project root)
 
 | Variable | Description |
 |----------|-------------|
+| `FRONTEND_PORT` | Port for frontend when using PM2 (default `5173`). Set e.g. `3000` to use port 3000. |
+| `AI_TC_GEN_CORS_ORIGINS` | Comma-separated CORS allowed origins (e.g. `http://localhost:5173`, `https://app.example.com`). Default includes localhost. |
 | `AI_TC_GEN_OPENAI_API_KEY` | OpenAI API key (optional) |
 | `AI_TC_GEN_GEMINI_API_KEY` | Gemini API key (optional) |
 | `AI_TC_GEN_GROQ_API_KEY` | Groq API key (optional) |
