@@ -28,7 +28,7 @@ def configure_logging(level_override: Optional[str] = None) -> None:
         stream=sys.stdout,
     )
 
-    # Reduce noise from underlying libraries in production-like environments.
+    # Reduce noise from underlying libraries.
     for noisy_logger in ("uvicorn", "uvicorn.access", "httpx"):
         logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 

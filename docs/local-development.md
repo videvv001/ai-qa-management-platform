@@ -52,7 +52,7 @@ npm run dev
 ```
 
 - **Backend:** http://localhost:8000  
-- **Frontend:** http://localhost:5173 (dev server port is set in `frontend/vite.config.ts`; for PM2 production port see [deployment](deployment.md#5-environment-variables))  
+- **Frontend:** http://localhost:5173 (dev server port is set in `frontend/vite.config.ts`)  
 
 Open the frontend URL in your browser. On Windows, the root `npm run dev` uses the project venv for the backend; on macOS/Linux, activate the venv first, then run `npm run dev`.
 

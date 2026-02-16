@@ -1,39 +1,32 @@
 # Troubleshooting
 
-Common issues and fixes for local development and production (PM2, Linux/Google Cloud).
+Common issues and fixes for local development.
 
 ---
 
-## Scripts won't run
+## Scripts won't run (Linux/macOS)
 
-**Symptom:** `Permission denied` when running `./start-pm2.sh`.
+**Symptom:** `Permission denied` when running a shell script.
+
+**Fix:** Ensure the script is executable: `chmod +x script-name.sh`
+
+---
+
+## Only frontend runs (backend not started)
+
+**Symptom:** Frontend loads but API calls fail (e.g. network error or 404).
+
+**Cause:** Backend is not running, or wrong port. Use `npm run dev` from project root to start both; or run backend and frontend separately.
 
 **Fix:**
 
-```bash
-chmod +x start-pm2.sh stop-pm2.sh
-./start-pm2.sh
-```
+1. From project root, run `npm run dev` (starts backend + frontend).
+2. Or: in one terminal activate venv, then `cd backend` and `uvicorn app.main:app --reload`. In another terminal: `npm run dev --prefix frontend`.
+3. On Windows, if root `npm run dev` fails, use two terminals: backend with `cd backend` then `..\venv\Scripts\python.exe -m uvicorn app.main:app --reload`, and frontend with `npm run dev --prefix frontend`.
 
 ---
 
-## Only frontend runs (backend errored)
-
-**Symptom:** `pm2 status` shows only `qamp-frontend` or `qamp-backend` is "errored".
-
-**Cause:** Backend is started via `run-backend.js` with `python3`. If `python3` is not in PATH, the backend fails.
-
-**Fix:**
-
-1. Ensure `run-backend.js` exists in project root.
-2. Install Node.js (required for the launcher).
-3. Install Python 3 and ensure `python3` is in PATH.
-4. Restart: `./stop-pm2.sh` then `./start-pm2.sh`.
-5. Check logs: `pm2 logs qamp-backend --lines 30`.
-
----
-
-## API not working (PM2 status looks good)
+## API not working
 
 **Checks:**
 
@@ -41,41 +34,27 @@ chmod +x start-pm2.sh stop-pm2.sh
    ```bash
    test -f .env && echo "OK" || echo "Missing"
    ```
+   (Windows: `if (Test-Path .env) { "OK" } else { "Missing" }`)
 
-2. **Frontend API URL**
-   ```bash
-   cat frontend/.env
-   ```
-   Should show `VITE_API_BASE_URL=http://localhost:8000` (or your backend URL).
+2. **Frontend API URL**  
+   `frontend/.env` can set `VITE_API_BASE_URL=http://localhost:8000`. If missing, Vite proxy is used when using `npm run dev`.
 
-3. **Backend logs**
-   ```bash
-   pm2 logs qamp-backend --lines 50
-   ```
-
-4. **Health endpoint**
+3. **Health endpoint**
    ```bash
    curl http://localhost:8000/api/health
    ```
    Expected: `{"status":"healthy",...}`
 
-5. **PM2 environment**
-   ```bash
-   pm2 env qamp-backend | grep AI_TC_GEN
-   ```
-   Should list backend env vars. If empty, `.env` is not being loaded (check project root and `ecosystem.config.js`).
+4. **Backend running**  
+   Backend runs on port 8000. Check terminal where you started it for errors.
 
 ---
 
 ## Frontend can't connect to backend
 
-1. Confirm `frontend/.env` has the correct `VITE_API_BASE_URL`.
-2. Rebuild and restart:
-   ```bash
-   cd frontend && npm run build && cd ..
-   pm2 restart qamp-frontend
-   ```
-3. Verify backend: `curl http://localhost:8000/api/health`.
+1. Confirm backend is running: `curl http://localhost:8000/api/health`.
+2. If not using Vite proxy, set `frontend/.env` with `VITE_API_BASE_URL=http://localhost:8000`.
+3. Restart frontend dev server after changing `frontend/.env`.
 
 ---
 
@@ -83,24 +62,17 @@ chmod +x start-pm2.sh stop-pm2.sh
 
 **Find process:**
 
-```bash
-sudo lsof -i :8000   # backend
-sudo lsof -i :5173   # frontend (default); or the port from FRONTEND_PORT in .env
-```
+- **Linux/macOS:** `lsof -i :8000` (backend), `lsof -i :5173` (frontend)
+- **Windows:** `netstat -ano | findstr :8000` then `taskkill /PID <pid> /F`
 
-**Kill by PID:**
-
-```bash
-sudo kill -9 <PID>
-```
+**Kill by PID:** Use your OS command to terminate the process (e.g. `kill -9 <PID>` on Unix, `taskkill /PID <pid> /F` on Windows).
 
 ---
 
 ## Backend can't find .env
 
 - `.env` must be in the **project root**, not in `backend/`.
-- PM2 runs the backend via `ecosystem.config.js`, which reads `.env` from the project root and passes variables to the process.
-- Check: `ls -la .env` and `pm2 env qamp-backend`.
+- When you run `uvicorn` from `backend/`, the app loads `.env` from the project root (see `backend/app/core/config.py`).
 
 ---
 
@@ -108,18 +80,8 @@ sudo kill -9 <PID>
 
 1. `.env` in project root (not in backend or frontend).
 2. Variable names use prefix `AI_TC_GEN_` for backend.
-3. Restart PM2: `pm2 restart all`.
+3. Restart the backend after changing `.env`.
 4. No spaces around `=` in `.env`; quote values if they contain spaces.
-
----
-
-## PM2 logs show errors
-
-- **View logs:** `pm2 logs --lines 100`
-- **Per process:** `pm2 logs qamp-backend`, `pm2 logs qamp-frontend`
-- **File logs:** `logs/backend-error.log`, `logs/frontend-error.log`
-
-Common causes: missing `python3` or Node, missing deps (`pip install -r backend/requirements.txt`, `npm install` in frontend), port in use, or invalid `.env`.
 
 ---
 
@@ -129,40 +91,27 @@ Common causes: missing `python3` or Node, missing deps (`pip install -r backend/
 cd backend
 pip install -r requirements.txt
 cd ..
-pm2 restart qamp-backend
 ```
+
+Restart the backend (stop and run `uvicorn` or `npm run dev` again).
 
 ---
 
-## Frontend build fails
+## Frontend build or dev fails
 
 ```bash
 cd frontend
 rm -rf node_modules package-lock.json
 npm install
-npm run build
-cd ..
-pm2 restart qamp-frontend
+npm run dev
 ```
+
+(Windows: remove `node_modules` and `package-lock.json` in Explorer or PowerShell, then `npm install` and `npm run dev`.)
 
 ---
 
-## Can't connect from outside (VPS/Google Cloud)
+## Complete restart (dev)
 
-1. **Firewall:** Ensure rules allow 8000, frontend port (default 5173 or `FRONTEND_PORT` from .env), or 80/443 if using nginx.
-2. **VM tags:** For GCP, instance must have `http-server` (and `https-server` if using HTTPS).
-3. **Nginx:** If using proxy, check `sudo systemctl status nginx` and `sudo nginx -t`.
-4. **PM2:** `pm2 status` — both processes online.
-5. **Logs:** `pm2 logs`.
-
----
-
-## Complete restart procedure
-
-```bash
-pm2 delete all
-cd frontend && npm run build && cd ..
-./start-pm2.sh
-```
-
-If ports are still in use, kill processes with `sudo lsof -i :8000` and `sudo lsof -i :5173` (or your `FRONTEND_PORT`), then `sudo kill -9 <PID>`.
+1. Stop any running backend and frontend (Ctrl+C in their terminals).
+2. From project root: `npm run dev`.
+3. If ports are still in use, kill the process using port 8000 or 5173 (see “Port already in use” above).

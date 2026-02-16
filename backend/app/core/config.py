@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # Core app settings
     app_name: str = Field(default="qamp")
-    environment: str = Field(default="development")  # development | staging | production
+    environment: str = Field(default="development")
     debug: bool = Field(default=False)
 
     # HTTP server
@@ -86,8 +86,8 @@ class Settings(BaseSettings):
         description="Login password. Set with AI_TC_GEN_AUTH_PASSWORD (or PASSWORD).",
     )
     jwt_secret: str = Field(
-        default="qamp-dev-secret-change-in-production",
-        description="Secret for JWT signing. Set AI_TC_GEN_JWT_SECRET in production.",
+        default="qamp-dev-secret-at-least-32-bytes-long",
+        description="Secret for JWT signing. Set AI_TC_GEN_JWT_SECRET in .env if needed.",
     )
     jwt_expire_minutes: int = Field(default=60 * 24, description="JWT expiry in minutes.")
 

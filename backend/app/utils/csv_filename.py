@@ -1,5 +1,5 @@
 """
-Production-safe CSV filename generation for batch and single-feature exports.
+Safe CSV filename generation for batch and single-feature exports.
 
 Generates short, unique, OS-safe filenames. Never use raw user input in filenames.
 """

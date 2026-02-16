@@ -232,4 +232,4 @@ Base URL: `http://localhost:8000` (or your host). OpenAPI: `http://localhost:800
 
 - **Implemented:** CSV filename sanitization; Pydantic validation; route ordering to avoid ID collisions.
 - **Auth:** Optional basic auth via `AI_TC_GEN_AUTH_USERNAME` / `AI_TC_GEN_AUTH_PASSWORD`; JWT for API. Do not commit `.env`.
-- **Recommendations:** Rate limiting; secrets management for API keys; HTTPS in production.
+- **Recommendations:** Rate limiting; secrets management for API keys; HTTPS when exposing to the network.

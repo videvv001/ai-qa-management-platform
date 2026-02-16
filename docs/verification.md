@@ -1,6 +1,6 @@
 # Verification Checklist
 
-Use this before and after starting the app (Linux/Mac/Google Cloud).
+Use this before and after starting the app (local development).
 
 ---
 
@@ -12,9 +12,11 @@ Use this before and after starting the app (Linux/Mac/Google Cloud).
 test -f .env && echo "OK" || echo "Missing"
 ```
 
+(Windows PowerShell: `if (Test-Path .env) { "OK" } else { "Missing" }`)
+
 If missing: copy `.env.example` to `.env` and set API keys and auth as needed.
 
-Required for typical setups:
+Typical options:
 
 - `AI_TC_GEN_OPENAI_API_KEY` (if using OpenAI)
 - `AI_TC_GEN_GEMINI_API_KEY` (if using Gemini)
@@ -24,27 +26,15 @@ Required for typical setups:
 
 ### 2. Frontend environment (`frontend/.env`)
 
-```bash
-test -f frontend/.env && echo "OK" || echo "Missing"
-```
-
-Should contain at least:
+Optional. If the API is not at `http://localhost:8000`, create `frontend/.env` with:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
-**Optional:** In project root `.env`, `FRONTEND_PORT` sets the frontend port when using PM2 (default 5173).
+When using `npm run dev`, the Vite proxy can forward `/api` to the backend without this.
 
-### 3. PM2
-
-```bash
-pm2 --version
-```
-
-If not installed: `npm install -g pm2`
-
-### 4. Backend dependencies
+### 3. Backend dependencies
 
 ```bash
 test -d backend/app && echo "OK" || echo "Missing"
@@ -52,7 +42,7 @@ test -d backend/app && echo "OK" || echo "Missing"
 
 If missing: `cd backend && pip install -r requirements.txt && cd ..`
 
-### 5. Frontend dependencies
+### 4. Frontend dependencies
 
 ```bash
 test -d frontend/node_modules && echo "OK" || echo "Missing"
@@ -60,76 +50,30 @@ test -d frontend/node_modules && echo "OK" || echo "Missing"
 
 If missing: `cd frontend && npm install && cd ..`
 
-### 6. Logs directory
+### 5. Ports free
 
-```bash
-test -d logs && echo "OK" || echo "Missing"
-```
+- **Linux/macOS:** `lsof -i :8000`, `lsof -i :5173` — no output means free.
+- **Windows:** `netstat -ano | findstr :8000`, `netstat -ano | findstr :5173`.
 
-If missing: `mkdir -p logs` (or run `./start-pm2.sh`, which creates it).
-
-### 7. Ecosystem config
-
-```bash
-test -f ecosystem.config.js && echo "OK" || echo "Missing"
-```
-
-### 8. Ports free
-
-```bash
-lsof -i :8000 2>/dev/null || true
-lsof -i :5173 2>/dev/null || true
-# If FRONTEND_PORT is set in .env (e.g. 3000), check that port too: lsof -i :3000
-```
-
-No output means ports are free. If in use: `sudo lsof -i :8000` then `sudo kill -9 <PID>` (same for 5173 or your `FRONTEND_PORT`).
-
-### 9. Clean PM2 state (optional)
-
-```bash
-pm2 delete qamp-backend 2>/dev/null || true
-pm2 delete qamp-frontend 2>/dev/null || true
-# or: pm2 delete all
-```
-
-### 10. Frontend build
-
-```bash
-cd frontend && npm run build && cd ..
-test -d frontend/dist && echo "OK" || echo "Missing"
-```
+If in use, stop the process using that port or kill it (see [troubleshooting](troubleshooting.md)).
 
 ---
 
 ## Start the application
 
+From project root:
+
 ```bash
-chmod +x start-pm2.sh stop-pm2.sh
-./start-pm2.sh
+npm run dev
 ```
+
+(Linux/macOS: activate venv first, then `npm run dev`. Windows: see [README](../README.md) for PowerShell steps.)
 
 ---
 
 ## Post-start verification
 
-### 1. PM2 status
-
-```bash
-pm2 status
-```
-
-Both `qamp-backend` and `qamp-frontend` should be **online**.
-
-### 2. Logs
-
-```bash
-pm2 logs qamp-backend --lines 20 --nostream
-pm2 logs qamp-frontend --lines 20 --nostream
-```
-
-Backend: FastAPI/Uvicorn on port 8000. Frontend: Vite on port 5173 (or `FRONTEND_PORT` from .env). No errors.
-
-### 3. Health endpoint
+### 1. Health endpoint
 
 ```bash
 curl http://localhost:8000/api/health
@@ -137,25 +81,24 @@ curl http://localhost:8000/api/health
 
 Expected: `{"status":"healthy","timestamp":"..."}`
 
-### 4. API docs
+### 2. API docs
 
 Open http://localhost:8000/docs — Swagger UI should load.
 
-### 5. Frontend
+### 3. Frontend
 
-Open http://localhost:5173 (or your FRONTEND_PORT from .env if set) — login or main UI loads; no console errors (F12).
+Open http://localhost:5173 — login or main UI loads; no console errors (F12).
 
-### 6. Full flow
+### 4. Full flow
 
-Log in (if auth enabled), generate a test case, check PM2 logs and browser console for errors.
+Log in (if auth enabled), generate a test case, check terminal and browser console for errors.
 
 ---
 
 ## Success criteria
 
-- All pre-flight checks pass
-- Both PM2 processes online
+- Backend responds on port 8000
 - Health endpoint returns healthy
 - API docs load
 - Frontend loads and can call API
-- No errors in PM2 logs or browser console
+- No errors in terminal or browser console
