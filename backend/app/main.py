@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.core.logging_config import configure_logging
 from app.api import register_routes
 from app.database.connection import init_db
-
+from fastapi.middleware.cors import CORSMiddleware
 
 def create_app() -> FastAPI:
     """
@@ -26,6 +26,15 @@ def create_app() -> FastAPI:
             "personal QA management with persistent test projects."
         ),
         version="0.1.0",
+    )
+
+    # 🔥 ADD CORS RIGHT HERE
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://34.134.137.164:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     register_routes(app)
