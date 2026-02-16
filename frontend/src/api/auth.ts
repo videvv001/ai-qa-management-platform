@@ -1,9 +1,34 @@
 /**
  * Auth API and token storage.
  * When backend auth is enabled, login returns a JWT stored in localStorage.
+ *
+ * 401 handling: AuthProvider registers a callback via registerOn401(logout).
+ * When apiFetch receives a 401, it calls notify401() so the app can clear auth state
+ * without using window events.
  */
 
 const AUTH_TOKEN_KEY = "qamp-auth-token";
+
+let on401Callback: (() => void) | null = null;
+
+/**
+ * Register a handler to be called when any API request returns 401.
+ * Used by AuthProvider to call logout() and transition to login state.
+ * Returns an unregister function for cleanup.
+ */
+export function registerOn401(callback: () => void): () => void {
+  on401Callback = callback;
+  return () => {
+    on401Callback = null;
+  };
+}
+
+/**
+ * Invoke the registered 401 handler. Called by apiFetch on 401 responses.
+ */
+export function notify401(): void {
+  on401Callback?.();
+}
 
 const getBaseUrl = (): string => {
   const base = import.meta.env.VITE_API_BASE_URL;

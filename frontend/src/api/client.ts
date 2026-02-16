@@ -3,7 +3,7 @@
  * All backend calls go through this module; no fetch in components.
  */
 
-import { clearToken, getToken } from "./auth";
+import { getToken, notify401 } from "./auth";
 import type {
   BatchGenerateRequest,
   BatchGenerateResponse,
@@ -40,15 +40,15 @@ const getBaseUrl = (): string => {
   return ""; // use relative URLs when proxying (e.g. /api)
 };
 
-/** Fetch with auth token. On 401, clears token and dispatches event for redirect to login. */
+/** Fetch with auth token. On 401, notifies auth layer (logout) and throws so callers stop. */
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const token = getToken();
   const headers = new Headers(init?.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(url, { ...init, headers });
   if (res.status === 401) {
-    clearToken();
-    window.dispatchEvent(new CustomEvent("qamp-auth-required"));
+    notify401();
+    throw new Error("Unauthorized");
   }
   return res;
 }
