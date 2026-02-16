@@ -1,42 +1,12 @@
 # QAMP Deployment Guide - Quick Reference
 
-This is a quick reference for deploying QAMP. For detailed guides, see the platform-specific documentation.
+**One start command runs BOTH backend and frontend.** Use the scripts or `npm run start:prod`; you should see two PM2 processes: `qamp-backend` and `qamp-frontend`.
 
-## Choose Your Platform
+This is a quick reference for deploying QAMP (Linux/Mac/Google Cloud). For detailed guides, see the platform-specific documentation.
 
-### 🪟 Windows (Local/Server)
-- Use PowerShell scripts: `.\start-pm2.ps1` and `.\stop-pm2.ps1`
-- See: `PM2_QUICK_START.md` and `PRODUCTION_DEPLOYMENT.md`
+## Quick Start
 
-### 🐧 Linux/Unix (Google Cloud, AWS, DigitalOcean, etc.)
-- Use Bash scripts: `./start-pm2.sh` and `./stop-pm2.sh`
-- See: `GOOGLE_CLOUD_DEPLOYMENT.md`
-
-### 🍎 macOS
-- Use Bash scripts: `./start-pm2.sh` and `./stop-pm2.sh`
-- Follow Linux instructions
-
-## Quick Start by Platform
-
-### Windows
-
-```powershell
-# 1. Install PM2
-npm install -g pm2
-
-# 2. Configure environment
-# Edit .env in project root
-# Edit frontend/.env
-
-# 3. Start application
-.\start-pm2.ps1
-
-# 4. Access
-# Frontend: http://localhost:5173
-# Backend: http://localhost:8000
-```
-
-### Linux/Mac/Google Cloud
+### Linux / Mac / Google Cloud
 
 ```bash
 # 1. Install PM2
@@ -60,7 +30,7 @@ chmod +x start-pm2.sh stop-pm2.sh
 # Backend: http://localhost:8000
 ```
 
-### Using npm Scripts (Cross-Platform)
+### Using npm Scripts
 
 ```bash
 # Build and start (recommended first time)
@@ -118,11 +88,6 @@ pm2 monit                  # Monitor in real-time
 
 ### Startup on Boot
 ```bash
-# Windows
-pm2 save
-pm2 startup
-
-# Linux/Mac
 pm2 save
 pm2 startup
 # Run the command it outputs
@@ -131,7 +96,9 @@ pm2 startup
 ### Update Application
 ```bash
 # Stop processes
-pm2 delete all  # or ./stop-pm2.sh or .\stop-pm2.ps1
+pm2 delete all
+# or
+./stop-pm2.sh
 
 # Pull latest code
 git pull
@@ -144,32 +111,22 @@ cd frontend && npm install && cd ..
 cd frontend && npm run build && cd ..
 
 # Start again
-./start-pm2.sh  # Linux/Mac
-# or
-.\start-pm2.ps1  # Windows
+./start-pm2.sh
 ```
 
-## Platform-Specific Guides
+## Guides
 
-| Platform | Guide | Scripts |
-|----------|-------|---------|
-| Windows Local/Server | `PRODUCTION_DEPLOYMENT.md` | `start-pm2.ps1`, `stop-pm2.ps1` |
-| Google Cloud | `GOOGLE_CLOUD_DEPLOYMENT.md` | `start-pm2.sh`, `stop-pm2.sh` |
-| Linux/Unix/Mac | `GOOGLE_CLOUD_DEPLOYMENT.md` | `start-pm2.sh`, `stop-pm2.sh` |
-| Quick Start | `PM2_QUICK_START.md` | All platforms |
-| Verification | `VERIFICATION_CHECKLIST.md` | Pre-deployment checks |
+| Guide | Description |
+|-------|-------------|
+| `PM2_QUICK_START.md` | Quick start guide |
+| `PRODUCTION_DEPLOYMENT.md` | Detailed deployment |
+| `GOOGLE_CLOUD_DEPLOYMENT.md` | Google Cloud setup |
+| `VERIFICATION_CHECKLIST.md` | Pre-deployment checks |
 
 ## Troubleshooting
 
 ### Scripts Won't Run
 
-**Windows:**
-```powershell
-# If execution policy error
-powershell -ExecutionPolicy Bypass -File .\start-pm2.ps1
-```
-
-**Linux/Mac:**
 ```bash
 # Make executable
 chmod +x start-pm2.sh stop-pm2.sh
@@ -180,15 +137,12 @@ chmod +x start-pm2.sh stop-pm2.sh
 
 ### Port Already in Use
 
-**Windows:**
-```powershell
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
-```
-
-**Linux/Mac:**
 ```bash
-sudo lsof -i :8000
+# Find what's using the port
+sudo lsof -i :8000   # backend
+sudo lsof -i :5173   # frontend
+
+# Kill the process
 sudo kill -9 <PID>
 ```
 
@@ -211,19 +165,18 @@ sudo kill -9 <PID>
 ```
 qamp/
 ├── .env                          # Backend config (REQUIRED)
-├── ecosystem.config.js           # PM2 configuration
-├── start-pm2.ps1                # Windows start script
-├── stop-pm2.ps1                 # Windows stop script
-├── start-pm2.sh                 # Linux/Mac start script
-├── stop-pm2.sh                  # Linux/Mac stop script
-├── logs/                        # PM2 logs
+├── run-backend.js                # Backend launcher (python3)
+├── ecosystem.config.js           # PM2 config: starts BOTH backend + frontend
+├── start-pm2.sh                  # Start both
+├── stop-pm2.sh                   # Stop both
+├── logs/                         # PM2 logs
 ├── backend/
 │   ├── app/
 │   ├── requirements.txt
-│   └── testcases.db             # SQLite database
+│   └── testcases.db              # SQLite database
 └── frontend/
-    ├── .env                     # Frontend API URL (REQUIRED)
-    ├── dist/                    # Built frontend
+    ├── .env                      # Frontend API URL (REQUIRED)
+    ├── dist/                     # Built frontend
     └── package.json
 ```
 
@@ -241,17 +194,7 @@ qamp/
 ## Need Help?
 
 1. **Quick Start**: Read `PM2_QUICK_START.md`
-2. **Windows**: Read `PRODUCTION_DEPLOYMENT.md`
-3. **Google Cloud**: Read `GOOGLE_CLOUD_DEPLOYMENT.md`
-4. **Troubleshooting**: Read `VERIFICATION_CHECKLIST.md`
-5. **Check Logs**: `pm2 logs --lines 100`
-6. **Check Status**: `pm2 status`
-
-## Support
-
-For issues:
-1. Check PM2 logs: `pm2 logs`
-2. Check log files in `logs/` directory
-3. Verify environment files exist and are correct
-4. Try stopping and starting again
-5. Check firewall/network rules
+2. **Google Cloud**: Read `GOOGLE_CLOUD_DEPLOYMENT.md`
+3. **Troubleshooting**: Read `VERIFICATION_CHECKLIST.md`
+4. **Check Logs**: `pm2 logs --lines 100`
+5. **Check Status**: `pm2 status`

@@ -1,3 +1,7 @@
+/**
+ * PM2 ecosystem config: starts BOTH backend (Python API) and frontend (Vite preview).
+ * Run from project root: pm2 start ecosystem.config.js
+ */
 const path = require('path');
 const fs = require('fs');
 
@@ -38,14 +42,13 @@ module.exports = {
   apps: [
     {
       name: 'qamp-backend',
-      cwd: path.resolve(__dirname, 'backend'),
-      script: 'python',
-      args: '-m uvicorn app.main:app --host 0.0.0.0 --port 8000',
-      interpreter: 'none',
+      cwd: __dirname,
+      script: path.resolve(__dirname, 'run-backend.js'),
+      interpreter: 'node',
+      interpreter_args: [],
       env: {
         ...envConfig,
         PYTHONUNBUFFERED: '1',
-        // Ensure the backend knows where to find the .env file
         AI_TC_GEN_ENV_FILE: path.resolve(__dirname, '.env')
       },
       watch: false,

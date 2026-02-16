@@ -1,13 +1,15 @@
 # Production Deployment Guide
 
-This guide explains how to deploy QAMP in production using PM2.
+This guide explains how to deploy QAMP in production using PM2 (Linux/Mac/Google Cloud).
+
+**One start command runs BOTH backend and frontend.** After starting, you should see two PM2 processes: `qamp-backend` and `qamp-frontend`. The backend is started via `run-backend.js` (using `python3`).
 
 ## Prerequisites
 
 1. **Node.js and npm** installed
 2. **Python 3.8+** with pip
 3. **PM2** installed globally:
-   ```powershell
+   ```bash
    npm install -g pm2
    ```
 
@@ -16,14 +18,14 @@ This guide explains how to deploy QAMP in production using PM2.
 ### 1. Install Dependencies
 
 #### Backend
-```powershell
+```bash
 cd backend
 pip install -r requirements.txt
 cd ..
 ```
 
 #### Frontend
-```powershell
+```bash
 cd frontend
 npm install
 cd ..
@@ -31,11 +33,7 @@ cd ..
 
 ### 2. Configure Environment Variables
 
-Make sure your `.env` file is in the **project root** (not in backend or frontend folders):
-
-```
-F:\project\tool\newaitool\qamp\.env
-```
+Make sure your `.env` file is in the **project root** (not in backend or frontend folders).
 
 The `.env` file should contain your API keys and configuration:
 
@@ -75,7 +73,7 @@ VITE_API_BASE_URL=https://your-backend-domain.com
 
 ### 4. Build Frontend
 
-```powershell
+```bash
 cd frontend
 npm run build
 cd ..
@@ -83,20 +81,21 @@ cd ..
 
 ### 5. Start Application with PM2
 
-#### Option 1: Use the provided PowerShell script
-```powershell
-.\start-pm2.ps1
+#### Option 1: Use the provided script
+```bash
+chmod +x start-pm2.sh stop-pm2.sh
+./start-pm2.sh
 ```
 
 #### Option 2: Manual PM2 start
-```powershell
+```bash
 pm2 start ecosystem.config.js
 ```
 
 ### 6. Verify Deployment
 
 Check PM2 status:
-```powershell
+```bash
 pm2 status
 ```
 
@@ -113,12 +112,12 @@ You should see two processes running:
 ## PM2 Management Commands
 
 ### View Status
-```powershell
+```bash
 pm2 status
 ```
 
 ### View Logs
-```powershell
+```bash
 # All logs
 pm2 logs
 
@@ -130,7 +129,7 @@ pm2 logs qamp-frontend
 ```
 
 ### Restart Application
-```powershell
+```bash
 # Restart all
 pm2 restart all
 
@@ -140,9 +139,9 @@ pm2 restart qamp-frontend
 ```
 
 ### Stop Application
-```powershell
+```bash
 # Use the provided script
-.\stop-pm2.ps1
+./stop-pm2.sh
 
 # Or manually
 pm2 stop all
@@ -150,13 +149,13 @@ pm2 delete all
 ```
 
 ### Monitor Application
-```powershell
+```bash
 pm2 monit
 ```
 
 ### Save PM2 Process List
 To auto-start PM2 processes on system reboot:
-```powershell
+```bash
 pm2 save
 pm2 startup
 ```
@@ -171,7 +170,7 @@ pm2 startup
 1. Verify `.env` file exists in project root (not in backend folder)
 2. Check PM2 logs: `pm2 logs qamp-backend`
 3. Verify environment variables are loaded:
-   ```powershell
+   ```bash
    pm2 env qamp-backend
    ```
 
@@ -190,9 +189,9 @@ pm2 startup
 
 **Solution**:
 1. Check what's using the port:
-   ```powershell
-   netstat -ano | findstr :8000  # Backend
-   netstat -ano | findstr :5173  # Frontend
+   ```bash
+   sudo lsof -i :8000   # Backend
+   sudo lsof -i :5173   # Frontend
    ```
 2. Kill the process or change the port in `ecosystem.config.js`
 
@@ -211,10 +210,11 @@ pm2 startup
 ```
 qamp/
 ├── .env                    # Main environment variables (MUST BE HERE)
+├── run-backend.js          # Backend launcher
 ├── ecosystem.config.js     # PM2 configuration
-├── start-pm2.ps1          # Start script
-├── stop-pm2.ps1           # Stop script
-├── logs/                  # PM2 log files
+├── start-pm2.sh             # Start script
+├── stop-pm2.sh             # Stop script
+├── logs/                   # PM2 log files
 │   ├── backend-error.log
 │   ├── backend-out.log
 │   ├── frontend-error.log
@@ -223,8 +223,8 @@ qamp/
 │   ├── app/
 │   └── requirements.txt
 └── frontend/
-    ├── .env              # Frontend environment variables
-    ├── dist/             # Built frontend files
+    ├── .env                # Frontend environment variables
+    ├── dist/                # Built frontend files
     └── package.json
 ```
 
@@ -253,14 +253,7 @@ qamp/
 
 ### Running on Different Ports
 
-Edit `ecosystem.config.js` and modify the args:
-
-```javascript
-// Backend - change port
-args: '-m uvicorn app.main:app --host 0.0.0.0 --port 8080',
-
-// Frontend - edit vite.config.ts server.port instead
-```
+Edit `ecosystem.config.js` and in `run-backend.js` (or the uvicorn args) change the port. For frontend, edit `vite.config.ts` server.port.
 
 ### Using Reverse Proxy (nginx)
 

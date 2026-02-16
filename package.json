@@ -8,7 +8,8 @@
     "pm2:status": "pm2 status",
     "pm2:logs": "pm2 logs",
     "pm2:restart": "pm2 restart all",
-    "pm2:build-start": "cd frontend && npm run build && cd .. && pm2 start ecosystem.config.js"
+    "pm2:build-start": "cd frontend && npm run build && cd .. && pm2 start ecosystem.config.js",
+    "start:prod": "npm run pm2:build-start"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

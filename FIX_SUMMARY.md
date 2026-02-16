@@ -8,7 +8,7 @@ You were experiencing issues with your production build where:
 - ✗ Environment variables weren't being loaded properly
 
 ## Root Cause
-When PM2 ran the backend from the `backend/` directory, it couldn't properly locate and load the `.env` file from the parent directory, causing all API keys and configuration to be missing.
+When PM2 ran the backend from the `backend/` directory, it couldn't properly locate and load the `.env` file from the parent directory, causing all API keys and configuration to be missing. On Linux, the backend was also started with `python` instead of `python3`, so the backend process failed and only the frontend ran.
 
 ## Solutions Implemented
 
@@ -23,8 +23,6 @@ When PM2 ran the backend from the `backend/` directory, it couldn't properly loc
 - Sets up logging to `logs/` directory
 - Uses absolute paths to avoid path resolution issues
 
-**Location**: `F:\project\tool\newaitool\qamp\ecosystem.config.js`
-
 ### 2. Created `frontend/.env`
 **Purpose**: Configure frontend to connect to backend API
 
@@ -35,10 +33,11 @@ VITE_API_BASE_URL=http://localhost:8000
 
 **Why needed**: In production (using `npm run preview`), Vite doesn't use the proxy configuration, so the frontend needs to know the backend's full URL.
 
-**Location**: `F:\project\tool\newaitool\qamp\frontend\.env`
+### 3. Created `run-backend.js`
+**Purpose**: Cross-platform backend launcher so the backend starts with `python3` on Linux/Mac (avoids "only frontend runs" when `python` is not in PATH).
 
-### 3. Created `start-pm2.ps1`
-**Purpose**: Automated startup script
+### 4. Created `start-pm2.sh`
+**Purpose**: Automated startup script (Linux/Mac/Google Cloud)
 
 **What it does**:
 1. Checks if PM2 is installed
@@ -49,20 +48,16 @@ VITE_API_BASE_URL=http://localhost:8000
 6. Starts both backend and frontend with PM2
 7. Shows status and helpful commands
 
-**Usage**: `.\start-pm2.ps1`
+**Usage**: `./start-pm2.sh`
 
-**Location**: `F:\project\tool\newaitool\qamp\start-pm2.ps1`
-
-### 4. Created `stop-pm2.ps1`
+### 5. Created `stop-pm2.sh`
 **Purpose**: Clean shutdown script
 
 **What it does**: Stops and removes all PM2 processes for this project
 
-**Usage**: `.\stop-pm2.ps1`
+**Usage**: `./stop-pm2.sh`
 
-**Location**: `F:\project\tool\newaitool\qamp\stop-pm2.ps1`
-
-### 5. Created `logs/` directory
+### 6. Created `logs/` directory
 **Purpose**: Store PM2 log files
 
 **Contents**:
@@ -71,12 +66,11 @@ VITE_API_BASE_URL=http://localhost:8000
 - `frontend-error.log` - Frontend error output
 - `frontend-out.log` - Frontend standard output
 
-**Location**: `F:\project\tool\newaitool\qamp\logs\`
-
-### 6. Created Documentation
+### 7. Created Documentation
 **Files created**:
 - `PM2_QUICK_START.md` - Quick reference guide (START HERE)
 - `PRODUCTION_DEPLOYMENT.md` - Detailed deployment guide
+- `GOOGLE_CLOUD_DEPLOYMENT.md` - Google Cloud setup
 - `FIX_SUMMARY.md` - This file
 
 ## How It Works Now
@@ -100,12 +94,12 @@ VITE_API_BASE_URL=http://localhost:8000
 ### Process Flow:
 
 ```
-start-pm2.ps1
+./start-pm2.sh
   ↓
 Builds frontend → dist/
   ↓
 PM2 starts ecosystem.config.js
-  ├─→ qamp-backend (runs from backend/ directory)
+  ├─→ qamp-backend (via run-backend.js, python3)
   │   - Receives environment variables from .env
   │   - Starts FastAPI on port 8000
   │   - Logs to logs/backend-*.log
@@ -123,12 +117,14 @@ PM2 starts ecosystem.config.js
 ```
 ✨ ecosystem.config.js              - PM2 configuration
 ✨ frontend/.env                    - Frontend API URL config
-✨ start-pm2.ps1                   - Start script
-✨ stop-pm2.ps1                    - Stop script
-✨ logs/                           - Log directory
-✨ PM2_QUICK_START.md              - Quick start guide
-✨ PRODUCTION_DEPLOYMENT.md        - Detailed guide
-✨ FIX_SUMMARY.md                  - This file
+✨ run-backend.js                   - Backend launcher (python3)
+✨ start-pm2.sh                     - Start script
+✨ stop-pm2.sh                      - Stop script
+✨ logs/                            - Log directory
+✨ PM2_QUICK_START.md               - Quick start guide
+✨ PRODUCTION_DEPLOYMENT.md         - Detailed guide
+✨ GOOGLE_CLOUD_DEPLOYMENT.md       - Google Cloud guide
+✨ FIX_SUMMARY.md                   - This file
 ```
 
 ### Existing Files Modified:
@@ -139,31 +135,32 @@ None - All existing code remains unchanged!
 ## Testing the Fix
 
 ### Step 1: Install PM2 (if not already installed)
-```powershell
+```bash
 npm install -g pm2
 ```
 
 ### Step 2: Stop any existing processes
-```powershell
+```bash
 # Stop PM2 processes (if any)
 pm2 delete all
 
 # Kill any processes on port 8000
-netstat -ano | findstr :8000
-# If found, kill with: taskkill /PID <PID> /F
+sudo lsof -i :8000
+# If found, kill with: sudo kill -9 <PID>
 
 # Kill any processes on port 5173
-netstat -ano | findstr :5173
-# If found, kill with: taskkill /PID <PID> /F
+sudo lsof -i :5173
+# If found, kill with: sudo kill -9 <PID>
 ```
 
 ### Step 3: Run the start script
-```powershell
-.\start-pm2.ps1
+```bash
+chmod +x start-pm2.sh stop-pm2.sh
+./start-pm2.sh
 ```
 
 ### Step 4: Verify it's working
-```powershell
+```bash
 # Check PM2 status
 pm2 status
 
@@ -177,7 +174,7 @@ pm2 logs qamp-frontend --lines 20
 curl http://localhost:8000/api/health
 
 # Access frontend in browser
-start http://localhost:5173
+# Open http://localhost:5173
 ```
 
 ## Expected Results
@@ -209,7 +206,7 @@ start http://localhost:5173
 ## Troubleshooting
 
 ### If backend logs show "API key not found":
-1. Check `.env` exists in project root: `Test-Path .\.env`
+1. Check `.env` exists in project root: `test -f .env`
 2. Check `.env` has the required keys
 3. Restart PM2: `pm2 restart qamp-backend`
 
@@ -220,18 +217,13 @@ start http://localhost:5173
 
 ### If PM2 shows "errored" status:
 1. Check logs: `pm2 logs --lines 50`
-2. Check if Python/Node is in PATH
+2. Check if Python 3 / Node is in PATH
 3. Check if required dependencies are installed
 
 ## Configuration Options
 
 ### Change Backend Port
-Edit `ecosystem.config.js`, line with backend args:
-```javascript
-args: '-m uvicorn app.main:app --host 0.0.0.0 --port 8080',
-```
-
-Then update `frontend/.env`:
+Edit `run-backend.js` (uvicorn port) and `frontend/.env`:
 ```env
 VITE_API_BASE_URL=http://localhost:8080
 ```
@@ -258,13 +250,13 @@ AI_TC_GEN_DEFAULT_LLM_PROVIDER=openai  # or ollama, gemini, groq
 - [ ] Don't commit `.env` to git (already in `.gitignore`)
 - [ ] Don't commit `frontend/.env` if it contains sensitive URLs
 - [ ] Use HTTPS in production (nginx/Apache reverse proxy)
-- [ ] Restrict `.env` file permissions: `icacls .env /inheritance:r /grant:r "%USERNAME%:R"`
+- [ ] Restrict `.env` file permissions: `chmod 600 .env`
 - [ ] Set up firewall rules if needed
 - [ ] Consider using PM2 startup script: `pm2 startup && pm2 save`
 
 ## What's Next?
 
-1. **Test the application**: Run `.\start-pm2.ps1` and test all features
+1. **Test the application**: Run `./start-pm2.sh` and test all features
 2. **Monitor logs**: Use `pm2 logs` to watch for any errors
 3. **Set up auto-start**: Use `pm2 startup` and `pm2 save` for automatic restart on reboot
 4. **Configure reverse proxy**: Set up nginx/Apache for production (see `PRODUCTION_DEPLOYMENT.md`)
@@ -272,12 +264,12 @@ AI_TC_GEN_DEFAULT_LLM_PROVIDER=openai  # or ollama, gemini, groq
 
 ## Quick Command Reference
 
-```powershell
+```bash
 # Start application
-.\start-pm2.ps1
+./start-pm2.sh
 
 # Stop application
-.\stop-pm2.ps1
+./stop-pm2.sh
 
 # Check status
 pm2 status
@@ -309,7 +301,8 @@ The fix ensures that:
 ✅ Backend receives all configuration (API keys, auth settings, etc.)
 ✅ Frontend knows where to find the backend API
 ✅ PM2 manages both processes with proper logging
-✅ Easy start/stop scripts for convenience
+✅ Backend runs via `run-backend.js` with `python3` on Linux
+✅ Easy start/stop scripts (bash) for Linux/Mac/Google Cloud
 ✅ All logs are captured in one place
 ✅ No code changes needed - just configuration!
 
