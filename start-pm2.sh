@@ -17,6 +17,13 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
+# Frontend port (from .env or default 5173). Export so ecosystem.config.js can use it.
+if [ -f ".env" ]; then
+  val=$(grep -E '^FRONTEND_PORT=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs)
+  if [ -n "$val" ]; then export FRONTEND_PORT="$val"; fi
+fi
+export FRONTEND_PORT=${FRONTEND_PORT:-5173}
+
 # Create logs directory if it doesn't exist
 if [ ! -d "logs" ]; then
     echo -e "\033[0;36mCreating logs directory...\033[0m"
@@ -56,7 +63,7 @@ fi
 
 echo -e "\n\033[0;32mApplication started (backend + frontend).\033[0m"
 echo -e "\033[0;36mBackend:  http://localhost:8000  (API + /docs)\033[0m"
-echo -e "\033[0;36mFrontend: http://localhost:5173\033[0m"
+echo -e "\033[0;36mFrontend: http://localhost:${FRONTEND_PORT}\033[0m"
 echo -e "\n\033[0;33mUseful commands:\033[0m"
 echo -e "  \033[0;37mpm2 status          - Check application status\033[0m"
 echo -e "  \033[0;37mpm2 logs            - View logs\033[0m"

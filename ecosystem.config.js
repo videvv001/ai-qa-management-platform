@@ -38,6 +38,9 @@ function parseEnvFile(filePath) {
 const envPath = path.resolve(__dirname, '.env');
 const envConfig = parseEnvFile(envPath);
 
+// Frontend port: FRONTEND_PORT in .env or from env (start-pm2.sh exports it), default 5173
+const frontendPort = process.env.FRONTEND_PORT || envConfig.FRONTEND_PORT || '5173';
+
 module.exports = {
   apps: [
     {
@@ -69,7 +72,7 @@ module.exports = {
       name: 'qamp-frontend',
       cwd: path.resolve(__dirname, 'frontend'),
       script: 'npm',
-      args: 'run preview',
+      args: `run preview -- --port ${frontendPort}`,
       interpreter: 'none',
       env: {
         NODE_ENV: 'production'
