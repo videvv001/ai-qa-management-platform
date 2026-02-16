@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     # Security (placeholder for future auth)
     api_key_header_name: Optional[str] = Field(default=None)
 
+    # CORS: comma-separated allowed origins (e.g. http://localhost:5173,https://app.example.com)
+    cors_origins: str = Field(
+        default="http://localhost:5173,http://localhost:3000",
+        description="Comma-separated list of allowed CORS origins. Set AI_TC_GEN_CORS_ORIGINS in .env.",
+    )
+
     # Database
     database_url: str = Field(
         default="sqlite:///./testcases.db",
