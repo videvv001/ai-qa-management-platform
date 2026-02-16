@@ -5,11 +5,11 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   checkAuthEnabled,
   clearToken,
   getToken,
+  registerOn401,
   setToken as storeToken,
 } from "@/api/auth";
 
@@ -27,7 +27,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [authRequired, setAuthRequired] = useState(false);
-  const navigate = useNavigate();
 
   const loginSuccess = useCallback((token: string) => {
     storeToken(token);
@@ -79,15 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Register logout as the 401 handler so apiFetch can trigger login state without window events
   useEffect(() => {
-    const onAuthRequired = () => {
-      clearToken();
-      setAuthState("login");
-      navigate("/login", { replace: true });
-    };
-    window.addEventListener("qamp-auth-required", onAuthRequired);
-    return () => window.removeEventListener("qamp-auth-required", onAuthRequired);
-  }, [navigate]);
+    const unregister = registerOn401(logout);
+    return unregister;
+  }, [logout]);
 
   const value: AuthContextValue = {
     authState,
