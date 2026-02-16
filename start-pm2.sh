@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# Bash script to start the application with PM2 (Linux/Mac/Google Cloud)
+
+echo -e "\033[0;32mStarting QAMP application with PM2...\033[0m"
+
+# Check if PM2 is installed
+if ! command -v pm2 &> /dev/null; then
+    echo -e "\033[0;31mPM2 is not installed. Please install it with: npm install -g pm2\033[0m"
+    exit 1
+fi
+
+# Check if .env file exists
+if [ ! -f ".env" ]; then
+    echo -e "\033[0;33mWarning: .env file not found in project root!\033[0m"
+    echo -e "\033[0;33mPlease create a .env file based on .env.example\033[0m"
+    exit 1
+fi
+
+# Create logs directory if it doesn't exist
+if [ ! -d "logs" ]; then
+    echo -e "\033[0;36mCreating logs directory...\033[0m"
+    mkdir -p logs
+fi
+
+# Build the frontend first
+echo -e "\033[0;36mBuilding frontend...\033[0m"
+cd frontend
+npm run build
+if [ $? -ne 0 ]; then
+    echo -e "\033[0;31mFrontend build failed!\033[0m"
+    cd ..
+    exit 1
+fi
+cd ..
+
+# Stop any existing PM2 processes
+echo -e "\033[0;36mStopping existing PM2 processes...\033[0m"
+pm2 delete ecosystem.config.js 2>/dev/null || true
+
+# Start PM2 with ecosystem config
+echo -e "\033[0;36mStarting PM2 processes...\033[0m"
+pm2 start ecosystem.config.js
+
+# Show status
+echo -e "\n\033[0;32mPM2 Status:\033[0m"
+pm2 status
+
+echo -e "\n\033[0;32mApplication started successfully!\033[0m"
+echo -e "\033[0;36mBackend: http://localhost:8000\033[0m"
+echo -e "\033[0;36mFrontend: http://localhost:5173\033[0m"
+echo -e "\n\033[0;33mUseful commands:\033[0m"
+echo -e "  \033[0;37mpm2 status          - Check application status\033[0m"
+echo -e "  \033[0;37mpm2 logs            - View logs\033[0m"
+echo -e "  \033[0;37mpm2 restart all     - Restart all processes\033[0m"
+echo -e "  \033[0;37mpm2 stop all        - Stop all processes\033[0m"
+echo -e "  \033[0;37mpm2 delete all      - Remove all processes\033[0m"
