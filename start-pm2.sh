@@ -38,16 +38,24 @@ cd ..
 echo -e "\033[0;36mStopping existing PM2 processes...\033[0m"
 pm2 delete ecosystem.config.js 2>/dev/null || true
 
-# Start PM2 with ecosystem config
-echo -e "\033[0;36mStarting PM2 processes...\033[0m"
+# Start PM2 with ecosystem config (BOTH backend and frontend)
+echo -e "\033[0;36mStarting PM2 processes (backend + frontend)...\033[0m"
 pm2 start ecosystem.config.js
 
 # Show status
 echo -e "\n\033[0;32mPM2 Status:\033[0m"
 pm2 status
 
-echo -e "\n\033[0;32mApplication started successfully!\033[0m"
-echo -e "\033[0;36mBackend: http://localhost:8000\033[0m"
+# Verify both apps are running
+if ! pm2 describe qamp-backend 2>/dev/null | grep -q "status: online"; then
+  echo -e "\033[0;33mWarning: Backend (qamp-backend) may not be online. Check: pm2 logs qamp-backend\033[0m"
+fi
+if ! pm2 describe qamp-frontend 2>/dev/null | grep -q "status: online"; then
+  echo -e "\033[0;33mWarning: Frontend (qamp-frontend) may not be online. Check: pm2 logs qamp-frontend\033[0m"
+fi
+
+echo -e "\n\033[0;32mApplication started (backend + frontend).\033[0m"
+echo -e "\033[0;36mBackend:  http://localhost:8000  (API + /docs)\033[0m"
 echo -e "\033[0;36mFrontend: http://localhost:5173\033[0m"
 echo -e "\n\033[0;33mUseful commands:\033[0m"
 echo -e "  \033[0;37mpm2 status          - Check application status\033[0m"

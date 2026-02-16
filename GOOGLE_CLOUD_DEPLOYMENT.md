@@ -2,6 +2,8 @@
 
 This guide explains how to deploy QAMP on Google Cloud (Compute Engine or Cloud Run).
 
+**Production runs BOTH backend and frontend.** The start script and `ecosystem.config.js` start two PM2 processes: `qamp-backend` (Python API) and `qamp-frontend` (Vite). The backend is launched via `run-backend.js` (using `python3`).
+
 ## Prerequisites
 
 - Google Cloud account with billing enabled
@@ -133,11 +135,15 @@ chmod +x start-pm2.sh
 chmod +x stop-pm2.sh
 ```
 
-### 9. Start the Application
+### 9. Start the Application (Backend + Frontend)
 
 ```bash
 ./start-pm2.sh
 ```
+
+You should see **both** processes online:
+- `qamp-backend` (Python API on port 8000)
+- `qamp-frontend` (Vite preview on port 5173)
 
 Or manually:
 ```bash

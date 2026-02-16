@@ -1,21 +1,22 @@
 # Verification Checklist - Before Starting PM2
 
-Run through this checklist before starting the application to ensure everything is configured correctly.
+Run through this checklist before starting the application to ensure everything is configured correctly (Linux/Mac/Google Cloud).
 
 ## Pre-Flight Checks
 
 ### 1. Environment File (`.env`)
-```powershell
+```bash
 # Check if .env exists in project root
-Test-Path .\.env
+test -f .env && echo "OK" || echo "Missing"
 ```
-**Expected**: `True`
 
-**If False**: Copy `.env.example` to `.env` and fill in your values
+**Expected**: `OK`
 
-```powershell
+**If Missing**: Copy `.env.example` to `.env` and fill in your values
+
+```bash
 # View .env contents (verify it has your API keys)
-cat .\.env
+cat .env
 ```
 
 **Must contain**:
@@ -27,15 +28,15 @@ cat .\.env
 - `AI_TC_GEN_AUTH_PASSWORD`
 
 ### 2. Frontend Environment File
-```powershell
+```bash
 # Check if frontend/.env exists
-Test-Path .\frontend\.env
+test -f frontend/.env && echo "OK" || echo "Missing"
 ```
-**Expected**: `True`
+**Expected**: `OK`
 
-```powershell
+```bash
 # View frontend/.env contents
-cat .\frontend\.env
+cat frontend/.env
 ```
 
 **Must contain**:
@@ -46,25 +47,25 @@ VITE_API_BASE_URL=http://localhost:8000
 **If different backend URL**: Update accordingly
 
 ### 3. PM2 Installation
-```powershell
+```bash
 # Check if PM2 is installed
 pm2 --version
 ```
 **Expected**: Version number (e.g., `5.x.x`)
 
 **If not installed**:
-```powershell
+```bash
 npm install -g pm2
 ```
 
 ### 4. Backend Dependencies
-```powershell
+```bash
 # Check if backend dependencies are installed
-Test-Path .\backend\app\
+test -d backend/app && echo "OK" || echo "Missing"
 ```
-**Expected**: `True`
+**Expected**: `OK`
 
-```powershell
+```bash
 # Install/update backend dependencies
 cd backend
 pip install -r requirements.txt
@@ -72,74 +73,74 @@ cd ..
 ```
 
 ### 5. Frontend Dependencies
-```powershell
+```bash
 # Check if frontend dependencies are installed
-Test-Path .\frontend\node_modules\
+test -d frontend/node_modules && echo "OK" || echo "Missing"
 ```
-**Expected**: `True`
+**Expected**: `OK`
 
-**If False**:
-```powershell
+**If Missing**:
+```bash
 cd frontend
 npm install
 cd ..
 ```
 
 ### 6. Logs Directory
-```powershell
+```bash
 # Check if logs directory exists
-Test-Path .\logs\
+test -d logs && echo "OK" || echo "Missing"
 ```
-**Expected**: `True`
+**Expected**: `OK`
 
-**If False** (shouldn't happen, start-pm2.ps1 creates it):
-```powershell
-New-Item -ItemType Directory -Path logs
+**If Missing** (start-pm2.sh creates it, or create manually):
+```bash
+mkdir -p logs
 ```
 
 ### 7. Ecosystem Configuration
-```powershell
+```bash
 # Check if ecosystem.config.js exists
-Test-Path .\ecosystem.config.js
+test -f ecosystem.config.js && echo "OK" || echo "Missing"
 ```
-**Expected**: `True`
+**Expected**: `OK`
 
 ### 8. Port Availability
 
 **Check if ports are free**:
-```powershell
+```bash
 # Check port 8000 (backend)
-netstat -ano | findstr :8000
+lsof -i :8000 2>/dev/null || true
 
 # Check port 5173 (frontend)
-netstat -ano | findstr :5173
+lsof -i :5173 2>/dev/null || true
 ```
 
 **Expected**: No output (ports are free)
 
 **If ports are in use**:
-```powershell
-# Kill process on port 8000
-$pid = (Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue).OwningProcess
-if ($pid) { taskkill /PID $pid /F }
+```bash
+# Find and kill process on port 8000
+sudo lsof -i :8000
+sudo kill -9 <PID>
 
-# Kill process on port 5173
-$pid = (Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue).OwningProcess
-if ($pid) { taskkill /PID $pid /F }
+# Find and kill process on port 5173
+sudo lsof -i :5173
+sudo kill -9 <PID>
 ```
 
 ### 9. Stop Existing PM2 Processes
-```powershell
+```bash
 # Stop any existing PM2 processes for this project
-pm2 delete qamp-backend 2>$null
-pm2 delete qamp-frontend 2>$null
+pm2 delete qamp-backend 2>/dev/null || true
+pm2 delete qamp-frontend 2>/dev/null || true
 
 # Or stop all PM2 processes
 pm2 delete all
 ```
 
 ### 10. Build Frontend
-```powershell
+```bash
 # Build the frontend
 cd frontend
 npm run build
@@ -148,22 +149,23 @@ cd ..
 
 **Expected**: No errors, `dist/` directory created in `frontend/`
 
-```powershell
+```bash
 # Verify build
-Test-Path .\frontend\dist\
+test -d frontend/dist && echo "OK" || echo "Missing"
 ```
-**Expected**: `True`
+**Expected**: `OK`
 
 ## All Checks Passed? Start the Application!
 
-```powershell
-.\start-pm2.ps1
+```bash
+chmod +x start-pm2.sh stop-pm2.sh
+./start-pm2.sh
 ```
 
 ## Post-Start Verification
 
 ### 1. Check PM2 Status
-```powershell
+```bash
 pm2 status
 ```
 
@@ -182,7 +184,7 @@ pm2 status
 **If status is `errored`**: Check logs (see step 2)
 
 ### 2. Check Logs
-```powershell
+```bash
 # View last 20 lines of each log
 pm2 logs qamp-backend --lines 20 --nostream
 pm2 logs qamp-frontend --lines 20 --nostream
@@ -199,7 +201,7 @@ pm2 logs qamp-frontend --lines 20 --nostream
 - No error messages
 
 ### 3. Test Backend Health Endpoint
-```powershell
+```bash
 # Test backend API
 curl http://localhost:8000/api/health
 ```
@@ -212,18 +214,14 @@ curl http://localhost:8000/api/health
 **If error**: Check backend logs
 
 ### 4. Test Backend API Documentation
-```powershell
-# Open API docs in browser
-start http://localhost:8000/docs
-```
+
+Open in browser: http://localhost:8000/docs
 
 **Expected**: Swagger UI page loads showing all API endpoints
 
 ### 5. Test Frontend
-```powershell
-# Open frontend in browser
-start http://localhost:5173
-```
+
+Open in browser: http://localhost:5173
 
 **Expected**: 
 - Login page loads
@@ -247,19 +245,19 @@ start http://localhost:5173
 ### Backend Status: "errored"
 
 **Check logs**:
-```powershell
+```bash
 pm2 logs qamp-backend --lines 50
 ```
 
 **Common issues**:
-- Python not found → Add Python to PATH
+- Python not found → Install Python 3, ensure `python3` is in PATH
 - Module not found → Run `pip install -r backend/requirements.txt`
 - Port already in use → Kill process on port 8000
 
 ### Frontend Status: "errored"
 
 **Check logs**:
-```powershell
+```bash
 pm2 logs qamp-frontend --lines 50
 ```
 
@@ -272,18 +270,18 @@ pm2 logs qamp-frontend --lines 50
 
 **Check**:
 1. Environment variables loaded?
-   ```powershell
+   ```bash
    pm2 env qamp-backend
    ```
    Should show all `AI_TC_GEN_*` variables
 
 2. Test health endpoint:
-   ```powershell
+   ```bash
    curl http://localhost:8000/api/health
    ```
 
 3. Check backend logs:
-   ```powershell
+   ```bash
    pm2 logs qamp-backend --lines 50
    ```
 
@@ -291,18 +289,18 @@ pm2 logs qamp-frontend --lines 50
 
 **Check**:
 1. `frontend/.env` has correct URL:
-   ```powershell
-   cat frontend\.env
+   ```bash
+   cat frontend/.env
    ```
    Should show: `VITE_API_BASE_URL=http://localhost:8000`
 
 2. Backend is running:
-   ```powershell
+   ```bash
    curl http://localhost:8000/api/health
    ```
 
 3. Rebuild frontend if `.env` was changed:
-   ```powershell
+   ```bash
    cd frontend
    npm run build
    cd ..
@@ -312,7 +310,7 @@ pm2 logs qamp-frontend --lines 50
 ### "Can't find module" errors
 
 **Backend**:
-```powershell
+```bash
 cd backend
 pip install -r requirements.txt
 cd ..
@@ -320,7 +318,7 @@ pm2 restart qamp-backend
 ```
 
 **Frontend**:
-```powershell
+```bash
 cd frontend
 npm install
 npm run build
@@ -330,13 +328,13 @@ pm2 restart qamp-frontend
 
 ## Quick Fix Commands
 
-```powershell
+```bash
 # Complete restart procedure
 pm2 delete all
 cd frontend
 npm run build
 cd ..
-.\start-pm2.ps1
+./start-pm2.sh
 
 # View all logs
 pm2 logs
@@ -346,11 +344,11 @@ pm2 restart qamp-backend
 pm2 restart qamp-frontend
 
 # Check what's using a port
-netstat -ano | findstr :8000
-netstat -ano | findstr :5173
+sudo lsof -i :8000
+sudo lsof -i :5173
 
 # Kill a process by PID
-taskkill /PID <PID> /F
+sudo kill -9 <PID>
 ```
 
 ## Success Criteria
@@ -368,23 +366,23 @@ taskkill /PID <PID> /F
 ## If All Else Fails
 
 1. **Stop everything**:
-   ```powershell
+   ```bash
    pm2 delete all
    ```
 
 2. **Clean ports**:
-   ```powershell
+   ```bash
    # Kill port 8000
-   $pid = (Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue).OwningProcess
-   if ($pid) { taskkill /PID $pid /F }
+   sudo lsof -i :8000
+   sudo kill -9 <PID>
    
    # Kill port 5173
-   $pid = (Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue).OwningProcess
-   if ($pid) { taskkill /PID $pid /F }
+   sudo lsof -i :5173
+   sudo kill -9 <PID>
    ```
 
 3. **Reinstall dependencies**:
-   ```powershell
+   ```bash
    # Backend
    cd backend
    pip install --upgrade -r requirements.txt
@@ -392,19 +390,19 @@ taskkill /PID <PID> /F
    
    # Frontend
    cd frontend
-   Remove-Item -Recurse -Force node_modules
+   rm -rf node_modules
    npm install
    npm run build
    cd ..
    ```
 
 4. **Start fresh**:
-   ```powershell
-   .\start-pm2.ps1
+   ```bash
+   ./start-pm2.sh
    ```
 
 5. **Check logs in detail**:
-   ```powershell
+   ```bash
    pm2 logs --lines 100
    ```
 
@@ -413,4 +411,5 @@ taskkill /PID <PID> /F
 Refer to these files:
 - `PM2_QUICK_START.md` - Quick start guide
 - `PRODUCTION_DEPLOYMENT.md` - Detailed deployment guide
+- `GOOGLE_CLOUD_DEPLOYMENT.md` - Google Cloud setup
 - `FIX_SUMMARY.md` - What was fixed and why
