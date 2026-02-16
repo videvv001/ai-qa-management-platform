@@ -72,10 +72,11 @@ module.exports = {
       name: 'qamp-frontend',
       cwd: path.resolve(__dirname, 'frontend'),
       script: 'npm',
-      args: `run preview -- --port ${frontendPort}`,
+      args: 'run preview',
       interpreter: 'none',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        FRONTEND_PORT: frontendPort
       },
       watch: false,
       instances: 1,
